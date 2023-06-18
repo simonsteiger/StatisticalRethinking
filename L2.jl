@@ -52,7 +52,7 @@ function sim_globe2(p, N, threshold; out=:obs)
     true_sample = sample(["W", "L"], Weights([p, 1 - p]), N; replace=true)
     
     # Wrap values in DataFrame for iteration below
-    df = DataFrame(:tru => true_sample, :rng => rand(Uniform(0, 1), N), :obs => fill("?", N))
+    df = DataFrame(:tru => true_sample, :rng => rand(Uniform(0, 1), N), :obs => Vector{String}(undef, N))
     
     # Iterate rows of df and swap true value if rng < threshold
     for i in 1:nrow(df)
