@@ -30,7 +30,7 @@ scatter(weight, howell1.height)
     σ ~ Uniform(0, 10)
 
     μ = α .+ β * x
-    return y ~ MvNormal(μ, σ^2 * I)
+    return y ~ MvNormal(μ, σ * I)
 end
 
 # Sample from priors
@@ -68,17 +68,18 @@ W = sim_weight(H, 0.5, 0.5)
 
 mod_sim = lreg_howell1(H, W)
 
-chn_sim = sample(mod_sim, NUTS(0.65), MCMCThreads(), 10_000, 3; burnin=2000)
-# Looks good! Extracting beta paramter correctly for large sample (n=1000)
+# Set burnin
+burnin = 2000
+# Sample from model
+chn_sim = sample(mod_sim, NUTS(0.65), MCMCThreads(), 10_000, 3; burnin=burnin)
+plot(chn_sim) # Looks good! Extracting beta paramter correctly for large sample (n=1000)
 
 # Time for the real data
 mod_howell1 = lreg_howell1(howell1.height, howell1.weight)
-
-chn_howell1 = sample(mod_howell1, NUTS(0.65), MCMCThreads(), 10_000, 3; burnin=2000)
-
+chn_howell1 = sample(mod_howell1, NUTS(0.65), MCMCThreads(), 10_000, 3; burnin=burnin)
 plot(chn_howell1)
 
-@chain DataFrame(df_chn) begin
+@chain DataFrame(chn_howell1) begin
     select(_, [:α, :β])
     plot_priopred(_, rand(1:nrow(_), 20))
 end
@@ -88,3 +89,38 @@ scatter!(howell1.height, howell1.weight, alpha=0.5, xlims=[130,180], ylims=[30,6
 # Add percentile intervals
 # Take model parameters, feed new height data, predict weight, and draw percentiles
 # This means we need to run many times for each synthetic data point?
+
+function prediction(chain, x; burnin=2000)
+    y = Dict{String, Any}()
+
+    for i in eachindex(x)
+        p = get_params(chain[burnin:end, :, :])
+        α = reduce(hcat, p.α)
+        β = reduce(hcat, p.β)
+        y[string(x[i])] = vec(α' .+ x[i] * β')
+    end
+
+    return y
+end
+
+height_seq = collect(132:2:180)
+
+quantiles = @chain DataFrame(prediction(chn_howell1, height_seq)) begin
+    stack(_)
+    groupby(_, :variable)
+    combine(_, :value => x -> quantile(x, [0.025, 0.975]))
+    DataFrames.transform(_, :variable => ByRow(x -> parse(Int64, x)) => :variable)
+end
+
+lower = @chain quantiles begin
+    groupby(_, :variable)
+    subset(_, :value_function => x -> x .== minimum(x))
+end
+
+upper = @chain quantiles begin
+    groupby(_, :variable)
+    subset(_, :value_function => x -> x .== maximum(x))
+end
+
+plot!(upper.variable, upper.value_function)
+plot!(lower.variable, lower.value_function)
