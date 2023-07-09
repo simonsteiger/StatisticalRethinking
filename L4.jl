@@ -44,8 +44,7 @@ end
 # The resulting histogram is not faceted, how would we achieve this? (not using any other libs)
 h_height_weight
 
-# Let sex = 1 female and sex = 2 male 
-# (why choose different labels than in howell1? Whatever, following McElreath here)
+# Let sex = 1 female and sex = 2 male
 function sim_hw(sex, α, β)
     N = length(sex)
     height = ifelse.(sex .== 1, 150, 160) .+ rand(Normal(0, 5), N)
@@ -72,7 +71,7 @@ mean(sim_hw(males, α, β).weight - sim_hw(females, α, β).weight)
 @model function msw(sex, y)
     N = length(unique(sex))
     α ~ filldist(Normal(60, 10), N)
-    σ ~ Uniform(0, 10)
+    σ ~ Uniform(0, 100)
     μ = α[sex]
     return y ~ MvNormal(μ, σ * I)
 end
@@ -87,6 +86,7 @@ sim_chn = sample(sim_model, NUTS(), MCMCThreads(), 1000, 3); # These estimates m
 # Specify model with the empirical data
 emp_model = msw(howell1.male .+ 1, howell1.weight);
 emp_chn = sample(emp_model, NUTS(), MCMCThreads(), 1000, 3);
+# Something is wrong with σ
 
 # Let's visualise the results
 
@@ -101,19 +101,38 @@ label = ["female", "male"];
 # Plot posterior mean weight
 h_post_weight = histogram();
 [histogram!(squash(post.α[i]); alpha=0.5, normalize=:pdf, label=label[i]) for i in 1:2]
-xlabel!("posterior mean weight (kg)")
+xlabel!("posterior mean weight (kg)");
 ylabel!("density")
 
-# Plot posterior predicted weight
-weights = Dict{Int64,Vector{Float64}}();
+# Preparations for plotting posterior predicted weight
+weights = Dict{Int64,Vector{Float64}}(); # somewhere to store results
+N = 1000 # Number of iterations in simulation
 post = get_params(emp_chn); # we need the results not the params?
 post_α = [mean(squash(post.α[1])), mean(squash(post.α[2]))]
 post_σ = mean(squash(post.σ))
-[weights[i] = rand(Normal(post_α[i], post_σ), 1000) for i in 1:2]
+
+# Plot posterior predicted weight
+[weights[i] = rand(Normal(post_α[i], post_σ), N) for i in 1:2]
 
 h_post_pred_weight = histogram();
 for k in keys(weights)
     histogram!(weights[k]; alpha=0.5, normalize=:pdf, label=label[k])
 end
-xlabel!("posterior mean weight (kg)")
+xlabel!("posterior mean weight (kg)");
 ylabel!("density")
+
+# Now let's look at causal contrast to determine if there is a difference!
+
+# Causal contrast (in means)
+μ_contrast = squash(post.α[2]) .- squash(post.α[1])
+
+# Plot a histogram of the resulting differences
+h_μ_contrast = histogram()
+histogram!(μ_contrast; normalize=:pdf, label=:none);
+xlabel!("difference");
+ylabel!("density")
+
+# How many of the posterior predicted weight differences are above / below zero?
+w_contrast = weights[2] .- weights[1]
+sum(w_contrast .> 0) / N
+sum(w_contrast .< 0) / N
