@@ -16,7 +16,7 @@ end
 # First a scatter plot, then a histogram
 
 # Initiate a plot window
-s = scatter()
+s_height_weight = scatter()
 
 # Populate the plot with data for males and females
 for gender in [0, 1]
@@ -27,9 +27,9 @@ for gender in [0, 1]
 end
 
 # Check out the plot
-s
+s_height_weight
 
-h = histogram()
+h_height_weight = histogram()
 
 for var in ["height", "weight"], gender in [0, 1]
     label = gender == 0 ? string(var, "_female") : string(var, "_male")
@@ -42,7 +42,7 @@ for var in ["height", "weight"], gender in [0, 1]
 end
 
 # The resulting histogram is not faceted, how would we achieve this? (not using any other libs)
-h
+h_height_weight
 
 # Let sex = 1 female and sex = 2 male 
 # (why choose different labels than in howell1? Whatever, following McElreath here)
@@ -68,7 +68,8 @@ females, males = fill(1, 10_000), fill(2, 10_000);
 β = Dict(1 => 0.5, 2 => 0.6);
 mean(sim_hw(males, α, β).weight - sim_hw(females, α, β).weight)
 
-@model function m_sw(sex, y)
+# Define a model predicting weight with sex
+@model function msw(sex, y)
     N = length(unique(sex))
     α ~ filldist(Normal(60, 10), N)
     σ ~ Uniform(0, 10)
@@ -76,6 +77,43 @@ mean(sim_hw(males, α, β).weight - sim_hw(females, α, β).weight)
     return y ~ MvNormal(μ, σ * I)
 end
 
-model = m_sw(howell1.male .+ 1, howell1.weight)
+# Simulate some data
+sim_df = sim_hw(sex, α, β)
 
-chn = sample(model, NUTS(), MCMCThreads(), 500, 3)
+# Specify the model with simulated data and sample
+sim_model = msw(sim_df.sex, sim_df.weight);
+sim_chn = sample(sim_model, NUTS(), MCMCThreads(), 1000, 3); # These estimates match McElreath's
+
+# Specify model with the empirical data
+emp_model = msw(howell1.male .+ 1, howell1.weight);
+emp_chn = sample(emp_model, NUTS(), MCMCThreads(), 1000, 3);
+
+# Let's visualise the results
+
+# Helper function to get a vector of samples from all chains
+function squash(x::AbstractArray)
+    return reduce(hcat, x)'
+end
+
+# Labels for legend
+label = ["female", "male"];
+
+# Plot posterior mean weight
+h_post_weight = histogram();
+[histogram!(squash(post.α[i]); alpha=0.5, normalize=:pdf, label=label[i]) for i in 1:2]
+xlabel!("posterior mean weight (kg)")
+ylabel!("density")
+
+# Plot posterior predicted weight
+weights = Dict{Int64,Vector{Float64}}();
+post = get_params(emp_chn); # we need the results not the params?
+post_α = [mean(squash(post.α[1])), mean(squash(post.α[2]))]
+post_σ = mean(squash(post.σ))
+[weights[i] = rand(Normal(post_α[i], post_σ), 1000) for i in 1:2]
+
+h_post_pred_weight = histogram();
+for k in keys(weights)
+    histogram!(weights[k]; alpha=0.5, normalize=:pdf, label=label[k])
+end
+xlabel!("posterior mean weight (kg)")
+ylabel!("density")
