@@ -16,7 +16,7 @@ end
 # First a scatter plot, then a histogram
 
 # Initiate a plot window
-s_height_weight = scatter()
+scat_height_weight = scatter()
 
 # Populate the plot with data for males and females
 for gender in [0, 1]
@@ -27,22 +27,26 @@ for gender in [0, 1]
 end
 
 # Check out the plot
-s_height_weight
+scat_height_weight
 
-h_height_weight = histogram()
-
-for var in ["height", "weight"], gender in [0, 1]
-    label = gender == 0 ? string(var, "_female") : string(var, "_male")
-    @chain howell1 begin
-        subset(_, :male => x -> x .== gender)
-        histogram!(_[!, var]; alpha=0.5, bins=20, normalize=:pdf, label=label)
-        xlabel!(var)
-        ylabel!("density")
+# Density plot of both variables
+function plot_by_gender(df, var) # gender variable must be :male with values [0, 1]
+    p = plot()
+    for gender in [0, 1]
+        label = gender == 0 ? "female" : "male"
+        @chain df begin
+            subset(_, :male => x -> x .== gender)
+            density!(_[!, var]; label=label, linewidth=2)
+            xlabel!(var)
+            ylabel!("density")
+        end    
     end
+    return p
 end
 
-# The resulting histogram is not faceted, how would we achieve this? (not using any other libs)
-h_height_weight
+dens_height_weight = Dict()
+[dens_height_weight[var] = plot_by_gender(howell1, var) for var in ["height", "weight"]]
+plot(dens_height_weight["height"], dens_height_weight["weight"])
 
 # Let sex = 1 female and sex = 2 male
 function sim_hw(sex, α, β)
@@ -71,9 +75,9 @@ mean(sim_hw(males, α, β).weight - sim_hw(females, α, β).weight)
 @model function msw(sex, y)
     N = length(unique(sex))
     α ~ filldist(Normal(60, 10), N)
-    σ ~ Uniform(0, 100)
+    σ ~ Uniform(0, 10)
     μ = α[sex]
-    return y ~ MvNormal(μ, σ * I)
+    return y ~ MvNormal(μ, σ^2 * I) # must square σ to obtain correct estimate - why?
 end
 
 # Simulate some data
@@ -99,8 +103,8 @@ end
 label = ["female", "male"];
 
 # Plot posterior mean weight
-h_post_weight = histogram();
-[histogram!(squash(post.α[i]); alpha=0.5, normalize=:pdf, label=label[i]) for i in 1:2]
+h_post_weight = density();
+[density!(squash(post.α[i]); linewidth=2, label=label[i], legend=:top) for i in 1:2]
 xlabel!("posterior mean weight (kg)");
 ylabel!("density")
 
@@ -114,9 +118,9 @@ post_σ = mean(squash(post.σ))
 # Plot posterior predicted weight
 [weights[i] = rand(Normal(post_α[i], post_σ), N) for i in 1:2]
 
-h_post_pred_weight = histogram();
+h_post_pred_weight = density();
 for k in keys(weights)
-    histogram!(weights[k]; alpha=0.5, normalize=:pdf, label=label[k])
+    density!(weights[k]; linewidth=2, label=label[k])
 end
 xlabel!("posterior mean weight (kg)");
 ylabel!("density")
@@ -127,8 +131,8 @@ ylabel!("density")
 μ_contrast = squash(post.α[2]) .- squash(post.α[1])
 
 # Plot a histogram of the resulting differences
-h_μ_contrast = histogram()
-histogram!(μ_contrast; normalize=:pdf, label=:none);
+h_μ_contrast = density();
+density!(μ_contrast; linewidth=2, label=:none);
 xlabel!("difference");
 ylabel!("density")
 
@@ -136,3 +140,10 @@ ylabel!("density")
 w_contrast = weights[2] .- weights[1]
 sum(w_contrast .> 0) / N
 sum(w_contrast .< 0) / N
+
+h_prop_zero = histogram();
+for fn in [(x -> x .> 0), (x -> x .< 0)]
+    histogram!(w_contrast[map(fn, w_contrast)]; alpha=0.5, label=:none)
+end
+xlabel!("posterior weight contrast");
+ylabel!("wanna-be-density") # normalize=:pdf distorts the plot a lot here, must plot groups differently
