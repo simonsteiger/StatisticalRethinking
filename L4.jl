@@ -39,7 +39,7 @@ function plot_by_gender(df, var) # gender variable must be :male with values [0,
             density!(_[!, var]; label=label, linewidth=2)
             xlabel!(var)
             ylabel!("density")
-        end    
+        end
     end
     return p
 end
@@ -104,18 +104,18 @@ label = ["female", "male"];
 # Preparations for plotting posterior predicted weight
 weights = Dict{Int64,Vector{Float64}}(); # somewhere to store results
 N = 1000 # Number of iterations in simulation
-post = get_params(emp_chn1); # we need the results not the params?
-post_α = [mean(squash(post.α[1])), mean(squash(post.α[2]))]
-post_σ = mean(squash(post.σ))
+post1 = get_params(emp_chn1);
+post1_mean_α = [mean(squash(post1.α[1])), mean(squash(post1.α[2]))]
+post1_mean_σ = mean(squash(post1.σ))
 
 # Plot posterior mean weight
 h_post_weight = density();
-[density!(squash(post.α[i]); linewidth=2, label=label[i], legend=:top) for i in 1:2]
+[density!(squash(post1.α[i]); linewidth=2, label=label[i], legend=:top) for i in 1:2]
 xlabel!("posterior mean weight (kg)");
 ylabel!("density")
 
 # Plot posterior predicted weight
-[weights[i] = rand(Normal(post_α[i], post_σ), N) for i in 1:2]
+[weights[i] = rand(Normal(post1_mean_α[i], post1_mean_σ), N) for i in 1:2]
 
 h_post_pred_weight = density();
 for k in keys(weights)
@@ -127,7 +127,7 @@ ylabel!("density")
 # Now let's look at causal contrast to determine if there is a difference!
 
 # Causal contrast (in means)
-μ_contrast = squash(post.α[2]) .- squash(post.α[1])
+μ_contrast = squash(post1.α[2]) .- squash(post1.α[1])
 
 # Plot a histogram of the resulting differences
 h_μ_contrast = density();
@@ -164,3 +164,30 @@ sim_chn2 = sample(sim_model2, NUTS(), MCMCThreads(), 1000, 3); # Parameters reco
 # Specify model with the empirical data
 emp_model2 = mshw(howell1.male .+ 1, howell1.height, howell1.weight);
 emp_chn2 = sample(emp_model2, NUTS(), MCMCThreads(), 1000, 3);
+
+# Add regression lines to scatter plot
+post2 = get_params(emp_chn2);
+post2_mean_α = [mean(squash(post2.α[1])), mean(squash(post2.α[2]))]
+post2_mean_β = [mean(squash(post2.β[1])), mean(squash(post2.β[2]))]
+post2_mean_σ = mean(squash(post2.σ))
+
+scat_height_weight = plot()
+
+# Populate the plot with data for males and females
+
+
+p = plot()
+x0, x1 = mean(howell1.height), mean(howell1.height) + 1
+for i in [1, 2]
+    label = i == 1 ? "female" : "male"
+    @chain howell1 begin
+        subset(_, :male => x -> x .== i - 1) # gender coded as 0 and 1 in howell1
+        scatter!(_.height, _.weight; alpha=0.5, color=i, label=string(label, "_observed"))
+    end
+    plot!([x0, x1], [post2_mean_α[i], post2_mean_α[i] + post2_mean_β[i]],
+        seriestype=:straightline,
+        linewidth=2,
+        color=i,
+        label=string(label, "_estimate"))
+end
+p

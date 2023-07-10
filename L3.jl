@@ -44,7 +44,7 @@ prior_sample = sample_prior_m31(missing, missing)
 
 psamples = DataFrame([prior_sample() for _ in 1:1000])
 
-function plot_priopred(df, iterator; xmax=50, alpha=0.2)
+function plot_regline(df, iterator; xmax=50, alpha=0.2)
     p = plot()
     for i in iterator
         y0 = df[i, 1]
@@ -54,7 +54,7 @@ function plot_priopred(df, iterator; xmax=50, alpha=0.2)
     return p
 end
 
-plot_priopred(psamples, 1:nrow(psamples); xmax=100)
+plot_regline(psamples, 1:nrow(psamples); xmax=100)
 
 # Some of these intercepts and slopes are far too extreme
 # Prior predictive simulation helps us see this
@@ -69,19 +69,19 @@ W = sim_weight(H, 0.5, 0.5)
 mod_sim = m31(H, W)
 
 # Set burnin
-burnin = 2000
+burnin = 1000
 # Sample from model
-chn_sim = sample(mod_sim, NUTS(0.65), MCMCThreads(), 10_000, 3; burnin=burnin)
+chn_sim = sample(mod_sim, NUTS(0.65), MCMCThreads(), 3000, 3; burnin=burnin)
 plot(chn_sim) # Looks good! Extracting beta paramter correctly for large sample (n=1000)
 
 # Time for the real data
 mod_howell1 = m31(howell1.height, howell1.weight)
-chn_howell1 = sample(mod_howell1, NUTS(0.65), MCMCThreads(), 10_000, 3; burnin=burnin)
+chn_howell1 = sample(mod_howell1, NUTS(0.65), MCMCThreads(), 3000, 3; burnin=burnin)
 plot(chn_howell1)
 
 @chain DataFrame(chn_howell1) begin
     select(_, [:α, :β])
-    plot_priopred(_, rand(1:nrow(_), 20))
+    plot_regline(_, rand(1:nrow(_), 20))
 end
 
 scatter!(howell1.height, howell1.weight, alpha=0.5, xlims=[130,180], ylims=[30,65])
@@ -90,7 +90,7 @@ scatter!(howell1.height, howell1.weight, alpha=0.5, xlims=[130,180], ylims=[30,6
 # Take model parameters, feed new height data, predict weight, and draw percentiles
 # This means we need to run many times for each synthetic data point?
 
-function prediction(chain, x; burnin=2000)
+function prediction(chain, x; burnin=1000)
     y = Dict{String, Any}()
 
     for i in eachindex(x)
