@@ -72,25 +72,24 @@ females, males = fill(1, 10_000), fill(2, 10_000);
 mean(sim_hw(males, α, β).weight - sim_hw(females, α, β).weight)
 
 # Define a model predicting weight with sex
-@model function msw(sex, y)
+@model function msw(sex, weight)
     N = length(unique(sex))
     α ~ filldist(Normal(60, 10), N)
     σ ~ Uniform(0, 10)
     μ = α[sex]
-    return y ~ MvNormal(μ, σ^2 * I) # must square σ to obtain correct estimate - why?
+    return weight ~ MvNormal(μ, σ^2 * I) # must square σ to obtain correct estimate - why?
 end
 
 # Simulate some data
 sim_df = sim_hw(sex, α, β)
 
 # Specify the model with simulated data and sample
-sim_model = msw(sim_df.sex, sim_df.weight);
-sim_chn = sample(sim_model, NUTS(), MCMCThreads(), 1000, 3); # These estimates match McElreath's
+sim_model1 = msw(sim_df.sex, sim_df.weight);
+sim_chn1 = sample(sim_model1, NUTS(), MCMCThreads(), 1000, 3); # These estimates match McElreath's
 
 # Specify model with the empirical data
-emp_model = msw(howell1.male .+ 1, howell1.weight);
-emp_chn = sample(emp_model, NUTS(), MCMCThreads(), 1000, 3);
-# Something is wrong with σ
+emp_model1 = msw(howell1.male .+ 1, howell1.weight);
+emp_chn1 = sample(emp_model1, NUTS(), MCMCThreads(), 1000, 3);
 
 # Let's visualise the results
 
@@ -102,18 +101,18 @@ end
 # Labels for legend
 label = ["female", "male"];
 
+# Preparations for plotting posterior predicted weight
+weights = Dict{Int64,Vector{Float64}}(); # somewhere to store results
+N = 1000 # Number of iterations in simulation
+post = get_params(emp_chn1); # we need the results not the params?
+post_α = [mean(squash(post.α[1])), mean(squash(post.α[2]))]
+post_σ = mean(squash(post.σ))
+
 # Plot posterior mean weight
 h_post_weight = density();
 [density!(squash(post.α[i]); linewidth=2, label=label[i], legend=:top) for i in 1:2]
 xlabel!("posterior mean weight (kg)");
 ylabel!("density")
-
-# Preparations for plotting posterior predicted weight
-weights = Dict{Int64,Vector{Float64}}(); # somewhere to store results
-N = 1000 # Number of iterations in simulation
-post = get_params(emp_chn); # we need the results not the params?
-post_α = [mean(squash(post.α[1])), mean(squash(post.α[2]))]
-post_σ = mean(squash(post.σ))
 
 # Plot posterior predicted weight
 [weights[i] = rand(Normal(post_α[i], post_σ), N) for i in 1:2]
@@ -147,3 +146,21 @@ for fn in [(x -> x .> 0), (x -> x .< 0)]
 end
 xlabel!("posterior weight contrast");
 ylabel!("wanna-be-density") # normalize=:pdf distorts the plot a lot here, must plot groups differently
+
+# Model both direct and indirect effects
+@model function mshw(sex, height, weight)
+    height_c = height .- mean(height) # center height
+    N = length(unique(sex))
+    α ~ filldist(Normal(60, 10), N)
+    β ~ filldist(Uniform(0, 1), N)
+    σ ~ Uniform(0, 10)
+    μ = α[sex] + β[sex] .* height_c
+    return weight ~ MvNormal(μ, σ^2 * I) # must square σ to obtain correct estimate - why?
+end
+
+sim_model2 = mshw(sim_df.sex, sim_df.height, sim_df.weight);
+sim_chn2 = sample(sim_model2, NUTS(), MCMCThreads(), 1000, 3); # Parameters recovered successfully
+
+# Specify model with the empirical data
+emp_model2 = mshw(howell1.male .+ 1, howell1.height, howell1.weight);
+emp_chn2 = sample(emp_model2, NUTS(), MCMCThreads(), 1000, 3);
