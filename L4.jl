@@ -190,7 +190,7 @@ end
 p_regline
 
 # Make some predictions
-function prediction(chain, sex, height)
+function prediction(chain, sex, height_c)
     length(sex) == length(height) || throw("sex and height vectors must be equal lengths")
 
     weight = Dict{String,Any}()
@@ -198,8 +198,8 @@ function prediction(chain, sex, height)
     α = squash.(p.α)
     β = squash.(p.β)
 
-    for i in eachindex(sex), j in eachindex(height)
-        weight[string(sex[i], "_", height[j])] = vec(α[sex[i]] .+ height[j] * β[sex[i]])
+    for i in eachindex(sex)
+        weight[string(sex[i], "_", height[i])] = vec(α[sex[i]] .+ β[sex[i]] * height_c)
     end
 
     return weight
@@ -210,14 +210,17 @@ n = length(h_seq)
 height = vcat(fill(h_seq, 2)...) # convoluted?
 sex = [fill(1, n)..., fill(2, n)...]
 
-quantiles = @chain DataFrame(prediction(emp_chn2, sex, height)) begin
+df_pred = DataFrame(prediction(emp_chn2, sex, height .- mean(howell1.height)));
+
+df_diff = @chain df_pred begin
     stack(_)
-    groupby(_, :variable)
-    combine(_, :value => (x -> quantile(x, [0.025, 0.975])) => identity)
     select(:variable => ByRow(x -> split(x, "_")) => :variable, :value)
-    select(:variable => ByRow(x -> (sex=x[1], height=x[2])) => identity, :value)
-    select(_, :variable => AsTable, :value)
-    DataFrames.transform(_, [:sex, :height] => ByRow((x, y) -> [parse(Int64, x), parse(Int64, y)]) => identity)
+    select(:variable => ByRow(x -> (sex=x[1], height_c=x[2])) => identity, :value)
+    select(_, :variable => AsTable, :value => identity => :weight)
+    DataFrames.transform(_, [:sex, :height_c] => ByRow((x, y) -> [parse(Int64, x), parse(Float64, y)]) => identity)
+    select(_, :sex, :height_c => ByRow(x -> x + mean(howell1.height)) => :height, :weight)
+    #groupby(_, [:height])
+    #combine(_, :value => ByRow(x -> reduce(-, x)) => identity)
 end
 
 # For contrast plot
