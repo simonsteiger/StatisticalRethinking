@@ -207,21 +207,52 @@ end
 
 h_seq = collect(130:1:180)
 n = length(h_seq)
-height = vcat(fill(h_seq, 2)...) # convoluted?
+height = vcat(fill(h_seq, 2)...)
 sex = [fill(1, n)..., fill(2, n)...]
+dict_pred = prediction(emp_chn2, sex, height .- mean(howell1.height))
 
-df_pred = DataFrame(prediction(emp_chn2, sex, height .- mean(howell1.height)));
-
-df_diff = @chain df_pred begin
+df_pred = @chain DataFrame(dict_pred) begin
     stack(_)
     select(:variable => ByRow(x -> split(x, "_")) => :variable, :value)
     select(:variable => ByRow(x -> (sex=x[1], height_c=x[2])) => identity, :value)
     select(_, :variable => AsTable, :value => identity => :weight)
     DataFrames.transform(_, [:sex, :height_c] => ByRow((x, y) -> [parse(Int64, x), parse(Float64, y)]) => identity)
     select(_, :sex, :height_c => ByRow(x -> x + mean(howell1.height)) => :height, :weight)
-    #groupby(_, [:height])
-    #combine(_, :value => ByRow(x -> reduce(-, x)) => identity)
 end
+
+# Check if heights are ordered equally for both sexes
+reduce(&, df_pred.height[df_pred.sex.==1.0] .== df_pred.height[df_pred.sex.==2.0])
+
+# Calculate difference: positive = female heavier, negative = male heavier
+w_diff = df_pred.weight[df_pred.sex.==1.0] .- df_pred.weight[df_pred.sex.==2.0]
+
+density(w_diff)
+
+df_diff = DataFrame(:diff => w_diff, :height => df_pred[1:length(w_diff), :].height)
+
+p_contrast = plot()
+
+for q in [[0.005, 0.995], [0.025, 0.975], [0.05, 0.95], [0.1, 0.9], [0.15, 0.85], [0.2, 0.8], [0.25, 0.75]]
+    df_quantiles = @chain df_diff begin
+        groupby(_, :height)
+        combine(_, :diff => (x -> quantile(x, q)) => :quantiles)
+    end
+
+    lower = @chain df_quantiles begin
+        groupby(_, :height)
+        subset(_, :quantiles => x -> x .== minimum(x))
+    end
+
+    upper = @chain df_quantiles begin
+        groupby(_, :height)
+        subset(_, :quantiles => x -> x .== maximum(x))
+    end
+
+    plot!(upper.height, upper.quantiles, fillrange=lower.quantiles, fillalpha=0.2, alpha=0, color="grey20")
+end
+
+hline!([0], color="black", linestyle=:dash, legend=:none)
+p_contrast
 
 # For contrast plot
 #x = collect(range(0, 2, length= 100))
