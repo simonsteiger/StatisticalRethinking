@@ -109,7 +109,7 @@ post1_mean_α = [mean(squash(post1.α[1])), mean(squash(post1.α[2]))]
 post1_mean_σ = mean(squash(post1.σ))
 
 # Plot posterior mean weight
-h_post_weight = density();
+d_post_weight = density();
 [density!(squash(post1.α[i]); linewidth=2, label=label[i], legend=:top) for i in 1:2]
 xlabel!("posterior mean weight (kg)");
 ylabel!("density")
@@ -117,7 +117,7 @@ ylabel!("density")
 # Plot posterior predicted weight
 [weights[i] = rand(Normal(post1_mean_α[i], post1_mean_σ), N) for i in 1:2]
 
-h_post_pred_weight = density();
+d_post_pred_weight = density();
 for k in keys(weights)
     density!(weights[k]; linewidth=2, label=label[k])
 end
@@ -130,7 +130,7 @@ ylabel!("density")
 μ_contrast = squash(post1.α[2]) .- squash(post1.α[1])
 
 # Plot a histogram of the resulting differences
-h_μ_contrast = density();
+d_μ_contrast = density();
 density!(μ_contrast; linewidth=2, label=:none);
 xlabel!("difference");
 ylabel!("density")
@@ -171,12 +171,8 @@ post2_mean_α = [mean(squash(post2.α[1])), mean(squash(post2.α[2]))]
 post2_mean_β = [mean(squash(post2.β[1])), mean(squash(post2.β[2]))]
 post2_mean_σ = mean(squash(post2.σ))
 
-scat_height_weight = plot()
+p_regline = plot()
 
-# Populate the plot with data for males and females
-
-
-p = plot()
 x0, x1 = mean(howell1.height), mean(howell1.height) + 1
 for i in [1, 2]
     label = i == 1 ? "female" : "male"
@@ -190,4 +186,43 @@ for i in [1, 2]
         color=i,
         label=string(label, "_estimate"))
 end
-p
+
+p_regline
+
+# Make some predictions
+function prediction(chain, sex, height)
+    length(sex) == length(height) || throw("sex and height vectors must be equal lengths")
+
+    weight = Dict{String,Any}()
+    p = get_params(chain)
+    α = squash.(p.α)
+    β = squash.(p.β)
+
+    for i in eachindex(sex), j in eachindex(height)
+        weight[string(sex[i], "_", height[j])] = vec(α[sex[i]] .+ height[j] * β[sex[i]])
+    end
+
+    return weight
+end
+
+h_seq = collect(130:1:180)
+n = length(h_seq)
+height = vcat(fill(h_seq, 2)...) # convoluted?
+sex = [fill(1, n)..., fill(2, n)...]
+
+quantiles = @chain DataFrame(prediction(emp_chn2, sex, height)) begin
+    stack(_)
+    groupby(_, :variable)
+    combine(_, :value => (x -> quantile(x, [0.025, 0.975])) => identity)
+    select(:variable => ByRow(x -> split(x, "_")) => :variable, :value)
+    select(:variable => ByRow(x -> (sex=x[1], height=x[2])) => identity, :value)
+    select(_, :variable => AsTable, :value)
+    DataFrames.transform(_, [:sex, :height] => ByRow((x, y) -> [parse(Int64, x), parse(Int64, y)]) => identity)
+end
+
+# For contrast plot
+#x = collect(range(0, 2, length= 100))
+#y1 = exp.(x)
+#y2 = exp.(1.3 .* x)
+#
+#plot(x, y1, fillrange = y2, fillalpha = 0.35, alpha=0, c = 1, label = "Confidence band", legend = :topleft)

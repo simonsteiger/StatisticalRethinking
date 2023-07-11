@@ -92,11 +92,11 @@ scatter!(howell1.height, howell1.weight, alpha=0.5, xlims=[130,180], ylims=[30,6
 
 function prediction(chain, x; burnin=1000)
     y = Dict{String, Any}()
+    p = get_params(chain[burnin:end, :, :])
+    α = reduce(hcat, p.α)
+    β = reduce(hcat, p.β)
 
     for i in eachindex(x)
-        p = get_params(chain[burnin:end, :, :])
-        α = reduce(hcat, p.α)
-        β = reduce(hcat, p.β)
         y[string(x[i])] = vec(α' .+ x[i] * β')
     end
 
