@@ -199,7 +199,7 @@ function prediction(chain, sex, height_c)
     β = squash.(p.β)
 
     for i in eachindex(sex)
-        weight[string(sex[i], "_", height[i])] = vec(α[sex[i]] .+ β[sex[i]] * height_c)
+        weight[string(sex[i], "_", height[i])] = vec(α[sex[i]] .+ β[sex[i]] * height_c[i])
     end
 
     return weight
@@ -214,10 +214,10 @@ dict_pred = prediction(emp_chn2, sex, height .- mean(howell1.height))
 df_pred = @chain DataFrame(dict_pred) begin
     stack(_)
     select(:variable => ByRow(x -> split(x, "_")) => :variable, :value)
-    select(:variable => ByRow(x -> (sex=x[1], height_c=x[2])) => identity, :value)
+    select(:variable => ByRow(x -> (sex=x[1], height=x[2])) => identity, :value)
     select(_, :variable => AsTable, :value => identity => :weight)
-    DataFrames.transform(_, [:sex, :height_c] => ByRow((x, y) -> [parse(Int64, x), parse(Float64, y)]) => identity)
-    select(_, :sex, :height_c => ByRow(x -> x + mean(howell1.height)) => :height, :weight)
+    DataFrames.transform(_, [:sex, :height] => ByRow((x, y) -> [parse(Int64, x), parse(Float64, y)]) => identity)
+    #select(_, :sex, :height_c => ByRow(x -> x + mean(howell1.height)) => :height, :weight)
 end
 
 # Check if heights are ordered equally for both sexes
@@ -253,10 +253,3 @@ end
 
 hline!([0], color="black", linestyle=:dash, legend=:none)
 p_contrast
-
-# For contrast plot
-#x = collect(range(0, 2, length= 100))
-#y1 = exp.(x)
-#y2 = exp.(1.3 .* x)
-#
-#plot(x, y1, fillrange = y2, fillalpha = 0.35, alpha=0, c = 1, label = "Confidence band", legend = :topleft)
