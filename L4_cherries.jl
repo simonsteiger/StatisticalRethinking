@@ -17,5 +17,7 @@ Z_doy, Z_temp = Ztrans(cherries.doy), Ztrans(cherries.temp)
 
 x = cherries.doy .- mean
 
-plot(cherries.year, cherries.doy)
-#plot!(cherries.temp)
+plot(cherries.year, Z_doy, alpha = 0.6)
+plot!(cherries.year, Z_temp, lw = 1.5)
+
+# Might look at splines again later

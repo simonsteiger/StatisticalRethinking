@@ -72,7 +72,7 @@ females, males = fill(1, 10_000), fill(2, 10_000);
 mean(sim_hw(males, α, β).weight - sim_hw(females, α, β).weight)
 
 # Define a model predicting weight with sex
-@model function msw(sex, weight)
+@model function m_sw(sex, weight)
     N = length(unique(sex))
     α ~ filldist(Normal(60, 10), N)
     σ ~ Uniform(0, 10)
@@ -84,11 +84,11 @@ end
 sim_df = sim_hw(sex, α, β)
 
 # Specify the model with simulated data and sample
-sim_model1 = msw(sim_df.sex, sim_df.weight);
+sim_model1 = m_sw(sim_df.sex, sim_df.weight);
 sim_chn1 = sample(sim_model1, NUTS(), MCMCThreads(), 1000, 3); # These estimates match McElreath's
 
 # Specify model with the empirical data
-emp_model1 = msw(howell1.male .+ 1, howell1.weight);
+emp_model1 = m_sw(howell1.male .+ 1, howell1.weight);
 emp_chn1 = sample(emp_model1, NUTS(), MCMCThreads(), 1000, 3);
 
 # Let's visualise the results
@@ -148,7 +148,7 @@ xlabel!("posterior weight contrast");
 ylabel!("wanna-be-density") # normalize=:pdf distorts the plot a lot here, must plot groups differently
 
 # Model both direct and indirect effects
-@model function mshw(sex, height, weight)
+@model function m_shw(sex, height, weight)
     height_c = height .- mean(height) # center height
     N = length(unique(sex))
     α ~ filldist(Normal(60, 10), N)
@@ -158,11 +158,11 @@ ylabel!("wanna-be-density") # normalize=:pdf distorts the plot a lot here, must 
     return weight ~ MvNormal(μ, σ^2 * I) # must square σ to obtain correct estimate - why?
 end
 
-sim_model2 = mshw(sim_df.sex, sim_df.height, sim_df.weight);
+sim_model2 = m_shw(sim_df.sex, sim_df.height, sim_df.weight);
 sim_chn2 = sample(sim_model2, NUTS(), MCMCThreads(), 1000, 3); # Parameters recovered successfully
 
 # Specify model with the empirical data
-emp_model2 = mshw(howell1.male .+ 1, howell1.height, howell1.weight);
+emp_model2 = m_shw(howell1.male .+ 1, howell1.height, howell1.weight);
 emp_chn2 = sample(emp_model2, NUTS(), MCMCThreads(), 1000, 3);
 
 # Add regression lines to scatter plot
@@ -253,3 +253,28 @@ end
 
 hline!([0], color="black", linestyle=:dash, legend=:none)
 p_contrast
+
+@model function m_shw_full(sex, height, weight)
+    N = length(unique(sex))
+
+    # height
+    γ ~ filldist(Normal(160, 10), N)
+    τ ~ Uniform(0, 10)
+    ν = γ[sex]
+    height ~ MvNormal(ν, τ^2 * I)
+
+    # weight
+    α ~ filldist(Normal(60, 10), N)
+    β ~ filldist(Uniform(0, 1), N)
+    σ ~ Uniform(0, 10)
+    μ = α[sex] + β[sex] .* (height .- mean(height))
+    return weight ~ MvNormal(μ, σ^2 * I)
+end
+
+# Specify model with the empirical data
+emp_model3 = m_shw_full(howell1.male .+ 1, howell1.height, howell1.weight);
+emp_chn3 = sample(emp_model3, NUTS(), MCMCThreads(), 1000, 3)
+
+# Extract parameters like in partial model
+# Simulate new observations
+# Calculate contrast
