@@ -1,14 +1,13 @@
-using Downloads, CSV
+# This file explores categorical predictors through a data example
+using CSV, Downloads
 using DataFrames, Chain
 using Distributions, Random, Turing, FillArrays
 using StatsPlots
 using LinearAlgebra
 
-remotedir = "https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/"
+remote = "https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/"
 
-Downloads.download(string(remotedir, "Howell1.csv"), "data/Howell1.csv")
-
-howell1 = @chain CSV.read("data/Howell1.csv", DataFrame) begin
+howell1 = @chain CSV.read(Downloads.download(string(remote, "Howell1.csv")), DataFrame) begin
     subset(_, :age => x -> x .>= 18)
 end
 

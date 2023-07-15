@@ -1,3 +1,4 @@
+# This file explores the basics of bayesian thinking through simulations
 using StatsBase, StatsPlots, Distributions, Random, FreqTables, DataFrames
 
 # Code 2.1
