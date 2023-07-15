@@ -32,54 +32,78 @@ function scatter_XYZ()
 	scatter(X, Y, color=Z.+1, alpha=0.6) # TODO improve labeling
 end
 
-# ╔═╡ e995f82f-925e-4086-9958-19de61af1c18
-# ╠═╡ show_logs = false
-# Simulate X and Y 10_000 times and plot the results
-begin
-	cor_XY = [cor(sim_fork()[[1, 2]]...) for _ in 1:10_000];
-	density(cor_XY, lw=1.5, label="cor(X, Y)")
-end
-# As expected, X and Y are correlated through their common cause Z
-
 # ╔═╡ e15874f0-89c8-4b66-9c2b-27748910476c
 # Simulate some data for a plot
 begin
-	X, Y, Z = sim_fork()
-	df_fork = DataFrame([X, Y], [:X, :Y])
+	X, Y, Z = sim_fork();
+	df_fork_null = DataFrame([X, Y], [:X, :Y]);
+	df_fork_Z0 = DataFrame([X[Z .== 0], Y[Z .== 0]], [:X, :Y]);
+	df_fork_Z1 = DataFrame([X[Z .== 1], Y[Z .== 1]], [:X, :Y]);
 end
 
 # ╔═╡ cecf7f68-d22c-4deb-85a5-91643449e2e2
 # Run a linear model to get coefficients for plotting
-lm_fork = lm(@formula(Y ~ X), df_fork)
+begin
+	lm_fork_null = lm(@formula(Y ~ X), df_fork_null);
+	lm_fork_Z0 = lm(@formula(Y ~ X), df_fork_Z0);
+	lm_fork_Z1 = lm(@formula(Y ~ X), df_fork_Z1);
+end
+
+# ╔═╡ fb3bc0e9-f792-407e-9c63-373012a6ff53
+# Helper to extract model parameters
+function get_params(m::StatsModels.TableRegressionModel)
+	out = Dict()
+	[out[i] = coef(m)[i] for i in 1:length(coef(m))]
+	# TODO would be nice to get coef names and use them as keys
+end
 
 # ╔═╡ 83df866f-477a-462b-8f06-379eb6b68039
 # Extract intercept and slope
-α_fork, β_fork = [coeftable(lm_fork).cols[1][i] for i in [1, 2]]
-
-# ╔═╡ 49bea5c3-6eec-4acc-b128-72a3c2a1441c
 begin
-	scatter_XYZ()
-	plot!(x -> α_fork + x * β_fork, color="black", lw = 1.5, label="Y ~ X")
+	coefs_fork_null = get_params(lm_fork_null)
+	coefs_fork_Z0 = get_params(lm_fork_Z0)
+	coefs_fork_Z1 = get_params(lm_fork_Z1)
 end
 
-# ╔═╡ 36a865b5-5968-4db5-a88a-8af769384920
-corXY_givenZ = 
-	map(1:10_000) do _
-		X, Y, Z = sim_fork()
-		[cor(X[Z .== i], Y[Z .== i]) for i in [0, 1]]
-	end
+# ╔═╡ 49bea5c3-6eec-4acc-b128-72a3c2a1441c
+let
+	# Define generative functions to be plotted below
+	fun_fork_null = x -> coefs_fork_null[1] + x * coefs_fork_null[2]
+	fun_fork_Z0 = x -> coefs_fork_Z0[1] + x * coefs_fork_Z0[2]
+	fun_fork_Z1 = x -> coefs_fork_Z1[1] + x * coefs_fork_Z1[2]
+	
+	# Plot the simulated data and the regression lines
+	scatter_XYZ()
+	plot!(fun_fork_null, color="black", lw = 1.5, label="Y ~ X")
+	plot!(fun_fork_Z0, color=1, lw = 1.5, label="Y ~ X|Z0")
+	plot!(fun_fork_Z1, color=2, lw = 1.5, label="Y ~ X|Z1")
+end
 
-# ╔═╡ f44dc328-92b2-4465-ae86-230048a8f747
-corXY_givenZ0, corXY_givenZ1 = 
-	map(1:2) do j
-		[corXY_givenZ[i][j] for i in eachindex(corXY_givenZ)]
-	end
+# ╔═╡ dc434290-b874-4fa0-bfb9-57570339f7b4
+
+
+# ╔═╡ 36a865b5-5968-4db5-a88a-8af769384920
+# Calculate these correlations again within each level of Z
+begin
+	corXY_givenZ = 
+		map(1:10_000) do _
+			X, Y, Z = sim_fork()
+			[cor(X[Z .== i], Y[Z .== i]) for i in [0, 1]]
+		end;
+
+	# Pull out vectors for Z == 0 and Z == 1
+	corXY_givenZ0, corXY_givenZ1 = 
+		map(1:2) do j
+			[corXY_givenZ[i][j] for i in eachindex(corXY_givenZ)]
+		end;
+end
 
 # ╔═╡ 934e386a-1de7-4982-a7df-fcbfc7778943
-density(corXY_givenZ0, lw=1.5, label="cor(X, Y)|Z=0")
-
-# ╔═╡ 9af2af86-0cb3-4951-8ef1-cf0d78903b30
-density(corXY_givenZ1, lw=1.5, label="cor(X, Y)|Z=1")
+begin
+	p_cor_givenZ0 = density(corXY_givenZ0, lw=1.5, label="cor(X, Y)|Z=0");
+	p_cor_givenZ1 = density(corXY_givenZ1, lw=1.5, label="cor(X, Y)|Z=1");
+	plot(p_cor_givenZ0, p_cor_givenZ1)
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1439,14 +1463,13 @@ version = "1.4.1+0"
 # ╠═bec9eea8-22d7-11ee-36e1-fddbd3d1df08
 # ╠═97938953-e224-47f2-9404-31d247aa0d67
 # ╠═b991a05d-aec0-4057-a228-5eba2c3de396
-# ╠═e995f82f-925e-4086-9958-19de61af1c18
 # ╠═e15874f0-89c8-4b66-9c2b-27748910476c
 # ╠═cecf7f68-d22c-4deb-85a5-91643449e2e2
+# ╠═fb3bc0e9-f792-407e-9c63-373012a6ff53
 # ╠═83df866f-477a-462b-8f06-379eb6b68039
 # ╠═49bea5c3-6eec-4acc-b128-72a3c2a1441c
+# ╠═dc434290-b874-4fa0-bfb9-57570339f7b4
 # ╠═36a865b5-5968-4db5-a88a-8af769384920
-# ╠═f44dc328-92b2-4465-ae86-230048a8f747
 # ╠═934e386a-1de7-4982-a7df-fcbfc7778943
-# ╠═9af2af86-0cb3-4951-8ef1-cf0d78903b30
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
