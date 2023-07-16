@@ -7,8 +7,9 @@ using InteractiveUtils
 # ╔═╡ 93e57e3c-232c-11ee-2146-3b2242966d86
 # This file explores fork confounds through a data example
 begin
-	using CSV, DataFrames
-	using StatsPlots, Statistics, Distributions, Turing
+	using CSV, DataFrames, Chain
+	using StatsPlots, Statistics, Distributions
+	using Turing
 end
 
 # ╔═╡ c0bdfa91-505f-4bff-bddf-801e4c0056a5
@@ -41,23 +42,27 @@ end
 # We'll have to break the fork by stratifying by Age at marriage
 
 # ╔═╡ 06c8ee3d-b229-4923-b7e8-b07943cc13e7
-# First Z standardize the variables we're interested in
-# Let's write a helper for that
+# It'll be hard to intuit priors for the variables we're interested in
+# (unless we're a specialist in US demography)
+# That's why it's usually a good idea to Z transform variables before modeling
+# Let's write a helper for that!
 function Ztrans(x::Vector{Float64}) 
 	ifelse.(ismissing(x), missing, (x .- mean(skipmissing(x))) ./ std(skipmissing(x)))
 end
 
-# ╔═╡ 5e9a3071-92a5-4538-82a5-c9fe0b499591
-begin
-	df_wafdiv.ZMarriage = Ztrans(df_wafdiv.Marriage);
-	df_wafdiv.ZDivorce = Ztrans(df_wafdiv.Divorce);
-	df_wafdiv.ZMedianAgeMarriage = Ztrans(df_wafdiv.MedianAgeMarriage);
-	select(df_wafdiv, Cols(startswith("Z"))) # Looks "normal", lol
+# ╔═╡ e52052d3-ad61-49c5-90eb-60942af2cf63
+let
+	cols = [:Marriage, :Divorce, :MedianAgeMarriage]
+	[df_wafdiv[!, Symbol(string("Z", c))] = Ztrans(df_wafdiv[!, c]) for c in cols]
+	select(df_wafdiv, string.("Z", cols)) # Looks "normal", lol
 end
 
 # ╔═╡ b2f01cde-9bde-4a22-821f-a8c85db754a2
+# Let's simulate the prior distribution with conventional flat priors
+# (σ² = 100 is effectively flat in the region of interest here)
 begin
-	p_prior_pred = plot()
+	p_prior_pred1 = plot()
+	xlims!(-2, 2)
 	let
 		n = 100
 		α = rand(Normal(0, 10), n)
@@ -66,14 +71,118 @@ begin
 		map(1:n) do i
 			plot!(x -> α[i] .+ β_age[i] .* x, legend=:none, alpha=0.4, color=1)
 		end
+		ylims!(-2, 2)
 	end
-	p_prior_pred
+	p_prior_pred1 # Most of these lines are much too extreme!
+end
+
+# ╔═╡ 04dd6179-4244-47d3-8c70-574d1e32c03d
+# Let's try priors more adjusted to standardized variables
+# We know that the majority of values will be between -1 and 1 after standardizing
+begin
+	p_prior_pred2 = plot()
+	xlims!(-2, 2)
+	let
+		n = 100
+		α = rand(Normal(0, 0.2), n)
+		β_mar = rand(Normal(0, 0.5), n)
+		β_age = rand(Normal(0, 0.5), n)
+		map(1:n) do i
+			plot!(x -> α[i] .+ β_age[i] .* x, legend=:none, alpha=0.4, color=1)
+		end
+		ylims!(-2, 2)
+	end
+	p_prior_pred2 # That looks much better
+end
+
+# ╔═╡ 9e94ac83-24e5-4213-8667-f0c6cb68df71
+@model function model_fork(marriage, age, divorce)
+	α ~ Normal(0, 0.2)
+	β_mar ~ Normal(0, 0.5)
+	β_age ~ Normal(0, 0.5)
+	σ ~ Exponential(1)
+	μ = α .+ β_mar .* marriage .+ β_age .* age
+	return divorce ~ MvNormal(μ, σ^2)
+end
+
+# ╔═╡ 805e700c-ade4-4bef-85ed-a6e7997c5e1a
+function sample_fork(df)
+	emp_model1 = model_fork(df.ZMarriage, df.ZMedianAgeMarriage, df.ZDivorce)
+	return sample(emp_model1, NUTS(), MCMCThreads(), 1000, 3)
+end
+
+# ╔═╡ 6a478be1-d9b5-4ae6-a79f-cd1d6f23c7b2
+begin
+	emp_chn1 = sample_fork(df_wafdiv);
+	describe(emp_chn1) # Plot doesn't show w/ plot(emp_chn1), but it does in VSCode
+end
+
+# ╔═╡ b3fcfd59-e6f8-46f4-98bf-415244c9bcd9
+let df = DataFrame(describe(emp_chn1)[1])
+	scatter(df.mean, string.(df.parameters), xerror=df.std, label="mean")
+end
+
+# ╔═╡ 913a1f2c-7fec-4a35-a1d1-1ff1b080ebb9
+# Simulate intervention to find out what the causal effect of Marriage rate really is
+
+# Default DAG
+# M ---> D
+# <- A ->
+
+# Intervention DAG do(M)
+# M ---> D
+#    A ->
+
+# We'll benefit from a helper to extract posterior samples
+function squash(x::AbstractArray)
+    return reduce(hcat, x)'
+end
+
+# ╔═╡ 6fe360de-57af-4048-bc2f-1cd570ea8fe3
+function intervene(df, chn; mar=nothing, age=nothing)
+	# Get posterior samples
+	p = get_params(chn)
+	α, β_mar, β_age, σ = [squash(p[i]) for i in [:α, :β_mar, :β_age, :σ]]
+	
+	# Create "observed" values
+	n, _ = size(α)
+	# If predictors are nothing, bootstrap a sample from the empirical data
+	# else fill a vector with the user-specified value
+	mar = isnothing(mar) ? rand(df.ZMarriage, n) : fill(mar, n)
+	age = isnothing(age) ? rand(df.ZMedianAgeMarriage, n) : fill(age, n)
+	
+	# Simulate divorce values
+	div = map(1:n) do i
+		rand(Normal(α[i] + β_mar[i] * mar[i] + β_age[i] .* age[i], σ[i]))
+	end
+
+	return DataFrame([mar, age, div], [:ZMarriage, :ZMedianAgeMarriage, :ZDivorce])
+end
+
+# ╔═╡ d085b246-e9b0-4f11-ac43-8c1182975a6f
+let df = df_wafdiv, chn = emp_chn1
+	dfM0 = intervene(df, chn; mar=0)
+	dfM1 = intervene(df, chn; mar=1)
+	contrastM = dfM1.ZDivorce .- dfM0.ZDivorce
+	p_contrastM = density(contrastM, label = "M1 - M0")
+	vline!(p_contrastM, [mean(contrastM)], label="mean")
+	
+	dfA0 = intervene(df, chn; age=0)
+	dfA1 = intervene(df, chn; age=1)
+	contrastA = dfA1.ZDivorce .- dfA0.ZDivorce
+	p_contrastA = density(contrastA, label = "A1 - A0")
+	vline!(p_contrastA, [mean(contrastA)], label="mean")
+
+	plot(p_contrastM, p_contrastA, lw=1.5)
+	# (R) Increasing Marriage rate by 1 likely has no effect on divorce rate
+	# (L) Increasing Age at marriage by 1 decreases divorce rate slightly
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -82,10 +191,11 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
 CSV = "~0.10.11"
+Chain = "~0.5.0"
 DataFrames = "~1.6.0"
 Distributions = "~0.25.98"
 StatsPlots = "~0.15.5"
-Turing = "~0.26.0"
+Turing = "~0.26.4"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -94,7 +204,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.1"
 manifest_format = "2.0"
-project_hash = "1231f306278db5377bb1891c6783538ff8c07699"
+project_hash = "4d9977e7ab42448d98bdc9f6bbc44852365fdf1d"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e58c18d2312749847a74f5be80bb0fa53da102bd"
@@ -326,6 +436,11 @@ git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
 uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
 
+[[deps.Chain]]
+git-tree-sha1 = "8c4920235f6c561e401dfe569beb8b924adad003"
+uuid = "8be319e6-bccf-4806-a6f7-6fae938471bc"
+version = "0.5.0"
+
 [[deps.ChainRules]]
 deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "Statistics", "StructArrays"]
 git-tree-sha1 = "f98ae934cd677d51d2941088849f0bf2f59e6f6e"
@@ -535,9 +650,9 @@ weakdeps = ["ChainRulesCore", "DensityInterface"]
 
 [[deps.DistributionsAD]]
 deps = ["Adapt", "ChainRules", "ChainRulesCore", "Compat", "Distributions", "FillArrays", "LinearAlgebra", "PDMats", "Random", "Requires", "SpecialFunctions", "StaticArrays", "StatsFuns", "ZygoteRules"]
-git-tree-sha1 = "1fb4fedd5a407243d535cc50c8c803c2fce0dc26"
+git-tree-sha1 = "72076a95c1874d7c33bd1dd7b3754ecad61e3df5"
 uuid = "ced4e74d-a319-5a8a-b0ac-84af2272839c"
-version = "0.6.49"
+version = "0.6.50"
 
     [deps.DistributionsAD.extensions]
     DistributionsADForwardDiffExt = "ForwardDiff"
@@ -637,9 +752,9 @@ uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays", "Statistics"]
-git-tree-sha1 = "e5556303fd8c9ad4a8fceccd406ef3433ddb4c45"
+git-tree-sha1 = "fc86b4fd3eff76c3ce4f5e96e2fdfa6282722885"
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
-version = "1.4.0"
+version = "1.0.0"
 
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
@@ -1015,10 +1130,10 @@ uuid = "6f1fad26-d15e-5dc8-ae53-837a1d7b8c9f"
 version = "0.8.6"
 
 [[deps.Libtiff_jll]]
-deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "XZ_jll", "Zlib_jll", "Zstd_jll"]
-git-tree-sha1 = "2da088d113af58221c52828a80378e16be7d037a"
+deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "Pkg", "Zlib_jll", "Zstd_jll"]
+git-tree-sha1 = "3eb79b0ca5764d4799c06699573fd8f533259713"
 uuid = "89763e89-9b03-5906-acba-b20f662cd828"
-version = "4.5.1+1"
+version = "4.4.0+0"
 
 [[deps.Libuuid_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1767,10 +1882,10 @@ uuid = "781d530d-4396-4725-bb49-402e4bee1e77"
 version = "1.4.0"
 
 [[deps.Turing]]
-deps = ["AbstractMCMC", "AdvancedHMC", "AdvancedMH", "AdvancedPS", "AdvancedVI", "BangBang", "Bijectors", "DataStructures", "Distributions", "DistributionsAD", "DocStringExtensions", "DynamicPPL", "EllipticalSliceSampling", "ForwardDiff", "Libtask", "LinearAlgebra", "LogDensityProblems", "LogDensityProblemsAD", "MCMCChains", "NamedArrays", "Printf", "Random", "Reexport", "Requires", "SciMLBase", "Setfield", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Tracker"]
-git-tree-sha1 = "4780f92d3a24f20e0284b011ba2eb10419b7553d"
+deps = ["AbstractMCMC", "AdvancedHMC", "AdvancedMH", "AdvancedPS", "AdvancedVI", "BangBang", "Bijectors", "DataStructures", "Distributions", "DistributionsAD", "DocStringExtensions", "DynamicPPL", "EllipticalSliceSampling", "FillArrays", "ForwardDiff", "Libtask", "LinearAlgebra", "LogDensityProblems", "LogDensityProblemsAD", "MCMCChains", "NamedArrays", "Printf", "Random", "Reexport", "Requires", "SciMLBase", "Setfield", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns", "Tracker"]
+git-tree-sha1 = "e163fe633f145ee41e6b682a2abe094317906e82"
 uuid = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
-version = "0.26.0"
+version = "0.26.4"
 
 [[deps.URIs]]
 git-tree-sha1 = "074f993b0ca030848b897beff716d93aca60f06a"
@@ -1869,12 +1984,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Libgcrypt_jll", "Libgpg_error_jll"
 git-tree-sha1 = "91844873c4085240b95e795f692c4cec4d805f8a"
 uuid = "aed1982a-8fda-507f-9586-7b0439959a61"
 version = "1.1.34+0"
-
-[[deps.XZ_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "2222b751598bd9f4885c9ce9cd23e83404baa8ce"
-uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
-version = "5.4.3+1"
 
 [[deps.Xorg_libX11_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxcb_jll", "Xorg_xtrans_jll"]
@@ -2094,7 +2203,15 @@ version = "1.4.1+0"
 # ╠═c0bdfa91-505f-4bff-bddf-801e4c0056a5
 # ╠═dbeff894-2bf8-4edd-8940-9a57a99f2aa4
 # ╠═06c8ee3d-b229-4923-b7e8-b07943cc13e7
-# ╠═5e9a3071-92a5-4538-82a5-c9fe0b499591
+# ╠═e52052d3-ad61-49c5-90eb-60942af2cf63
 # ╠═b2f01cde-9bde-4a22-821f-a8c85db754a2
+# ╠═04dd6179-4244-47d3-8c70-574d1e32c03d
+# ╠═9e94ac83-24e5-4213-8667-f0c6cb68df71
+# ╠═805e700c-ade4-4bef-85ed-a6e7997c5e1a
+# ╠═6a478be1-d9b5-4ae6-a79f-cd1d6f23c7b2
+# ╠═b3fcfd59-e6f8-46f4-98bf-415244c9bcd9
+# ╠═913a1f2c-7fec-4a35-a1d1-1ff1b080ebb9
+# ╠═6fe360de-57af-4048-bc2f-1cd570ea8fe3
+# ╠═d085b246-e9b0-4f11-ac43-8c1182975a6f
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
