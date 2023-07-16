@@ -139,7 +139,7 @@ function squash(x::AbstractArray)
 end
 
 # ╔═╡ 6fe360de-57af-4048-bc2f-1cd570ea8fe3
-function intervene(df, chn; mar=nothing, age=nothing)
+function intervene_M(df, chn; mar=nothing, age=nothing)
 	# Get posterior samples
 	p = get_params(chn)
 	α, β_mar, β_age, σ = [squash(p[i]) for i in [:α, :β_mar, :β_age, :σ]]
@@ -161,21 +161,76 @@ end
 
 # ╔═╡ d085b246-e9b0-4f11-ac43-8c1182975a6f
 let df = df_wafdiv, chn = emp_chn1
-	dfM0 = intervene(df, chn; mar=0)
-	dfM1 = intervene(df, chn; mar=1)
+	dfM0 = intervene_M(df, chn; mar=0)
+	dfM1 = intervene_M(df, chn; mar=2)
 	contrastM = dfM1.ZDivorce .- dfM0.ZDivorce
 	p_contrastM = density(contrastM, label = "M1 - M0")
 	vline!(p_contrastM, [mean(contrastM)], label="mean")
 	
-	dfA0 = intervene(df, chn; age=0)
-	dfA1 = intervene(df, chn; age=1)
+	dfA0 = intervene_M(df, chn; age=0)
+	dfA1 = intervene_M(df, chn; age=2)
 	contrastA = dfA1.ZDivorce .- dfA0.ZDivorce
 	p_contrastA = density(contrastA, label = "A1 - A0")
 	vline!(p_contrastA, [mean(contrastA)], label="mean")
 
 	plot(p_contrastM, p_contrastA, lw=1.5)
-	# (R) Increasing Marriage rate by 1 likely has no effect on divorce rate
-	# (L) Increasing Age at marriage by 1 decreases divorce rate slightly
+	# (L) Increasing Marriage rate has no effect on divorce rate
+	# (R) Increasing Age at marriage decreases divorce rate
+	# But the previous intervention on Age does not isolate its effect!
+	# For that, we will have to look at a Pipe confound
+	# A -> M -> D
+end
+
+# ╔═╡ a07c28d2-eccd-42e3-b7d9-9cdf29ad2165
+# The model which we will have to fit has to ignore Marriage
+@model function model_pipe(age, divorce)
+	α ~ Normal(0, 0.2)
+	β_age ~ Normal(0, 0.5)
+	σ ~ Exponential(1)
+	μ = α .+ β_age .* age
+	return divorce ~ MvNormal(μ, σ^2)
+end
+
+# ╔═╡ c5e718d3-2450-45e4-94ab-683a84f482fb
+# Function to sample
+function sample_pipe(df)
+	emp_model2 = model_pipe(df.ZMedianAgeMarriage, df.ZDivorce)
+	return sample(emp_model2, NUTS(), MCMCThreads(), 1000, 3)
+end
+
+# ╔═╡ cc250dd1-38d8-4087-98ac-584b289def1a
+begin
+	emp_chn2 = sample_pipe(df_wafdiv);
+	describe(emp_chn2)
+end
+
+# ╔═╡ 904e19d2-ba1a-4b04-879a-f889749ddfe5
+function intervene_A(df, chn; age=nothing)
+	# Get posterior samples
+	p = get_params(chn)
+	α, β_age, σ = [squash(p[i]) for i in [:α, :β_age, :σ]]
+	
+	# Create "observed" values
+	n, _ = size(α)
+	# If predictors are nothing, bootstrap a sample from the empirical data
+	# else fill a vector with the user-specified value
+	age = isnothing(age) ? rand(df.ZMedianAgeMarriage, n) : fill(age, n)
+	
+	# Simulate divorce values
+	div = map(1:n) do i
+		rand(Normal(α[i] + β_age[i] .* age[i], σ[i]))
+	end
+
+	return DataFrame([age, div], [:ZMedianAgeMarriage, :ZDivorce])
+end
+
+# ╔═╡ 715fc5fc-cd14-4df1-ae42-8c4a2ded532e
+let df = df_wafdiv, chn = emp_chn2
+	dfA0 = intervene_A(df, chn, age=0)
+	dfA2 = intervene_A(df, chn, age=2)
+	contrastA = dfA2.ZDivorce .- dfA0.ZDivorce
+	density(contrastA)
+	vline!([mean(contrastA)])
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2213,5 +2268,10 @@ version = "1.4.1+0"
 # ╠═913a1f2c-7fec-4a35-a1d1-1ff1b080ebb9
 # ╠═6fe360de-57af-4048-bc2f-1cd570ea8fe3
 # ╠═d085b246-e9b0-4f11-ac43-8c1182975a6f
+# ╠═a07c28d2-eccd-42e3-b7d9-9cdf29ad2165
+# ╠═c5e718d3-2450-45e4-94ab-683a84f482fb
+# ╠═cc250dd1-38d8-4087-98ac-584b289def1a
+# ╠═904e19d2-ba1a-4b04-879a-f889749ddfe5
+# ╠═715fc5fc-cd14-4df1-ae42-8c4a2ded532e
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
