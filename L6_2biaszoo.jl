@@ -8,6 +8,9 @@ using InteractiveUtils
 using Distributions, GLM, StatsPlots, DataFrames
 
 # ╔═╡ 23dfe535-7a54-46be-8a93-baac0d479fe5
+# Vary parameters here to change the DAG
+# try setting β_ZY to 0
+# X -> Z -> Y
 function sim_frontdoor(N=100, β_XZ=1, β_ZY=1)
 	X = rand(Normal(), N)
 	u = rand(Normal(), N)
@@ -16,32 +19,142 @@ function sim_frontdoor(N=100, β_XZ=1, β_ZY=1)
 	df = DataFrame([X, Z, Y], [:X, :Z, :Y])
 end
 
-# ╔═╡ fa5c0b1c-d43e-4d33-97ac-d898ebdc2b5a
-df = sim_frontdoor()
-
-# ╔═╡ 84e02fc7-8d4d-4b0f-8244-323b24803e2d
-function fit_frontdoor(df)
+# ╔═╡ c13b384e-a3c5-47d1-be9d-320a79278429
+function fit_sim(df::DataFrame)
 	fit_X = lm(@formula(Y ~ X), df)
 	fit_XZ = lm(@formula(Y ~ X + Z), df)
-	return [coef(f)[2] for f in [fit_X, fit_XZ]]
+	return begin
+		map([fit_X, fit_XZ]) do f
+				[coef(f)[i] for i in 1:length(coef(f))]
+		end
+	end
 end
 
-# ╔═╡ 685e0353-b22e-47f3-82df-78e9cda936cd
-fit_frontdoor(df)
-
-# ╔═╡ fa424d6f-eb4b-4472-9646-b0419a41aa32
-coefs = 
-	map(1:10_000) do _
-		df = sim_frontdoor()
-		fit_frontdoor(df)
+# ╔═╡ fe1271d7-97ef-4434-87e8-e2c862b2a7b6
+# Helper to fit competing models several times and extract coefs of X each time
+function coef_sim(f::Function; N::Int64=10_000) # How to allow passing f with args?
+	map(1:N) do _
+		df = f()
+		fit_sim(df)
+	end
 end
 
-# ╔═╡ c97ca281-ad8f-4c12-89e3-5ed81449bcd2
-let
-	p = density([coefs[i][1] for i in eachindex(coefs)], label="Y|X")
-	density!([coefs[i][2] for i in eachindex(coefs)], label="Y|X,Z")
-	p
+# ╔═╡ 45edde93-686f-453b-a7f5-96a709e0db69
+function plot_sim(coefs::Vector)
+	β_X = [coefs[i][1][2] for i in eachindex(coefs)]
+	β_XZ = [coefs[i][2][2] for i in eachindex(coefs)]
+	p = density(β_X, label="Y|X (correct)")
+	density!(β_XZ, label="Y|X,Z (wrong)")
+	return p
 end
+
+# ╔═╡ 8c945749-9a69-487c-8903-ddde50e8b20d
+coefs_frontdoor = coef_sim(sim_frontdoor)
+
+# ╔═╡ 101f48ef-7a0d-4f5e-96ff-9c6babcce1ef
+plot_sim(coefs_frontdoor)
+
+# ╔═╡ 8f316507-f344-451a-a432-90cb08103849
+# Case-control bias X -> Y -> Z
+# Don't stratify by Z, don't stratify by what happens to people with an outcome!
+# Education -> Occupation -> Income
+# Stratifying by Income reduces variation in Occupation that Education can explain
+function sim_ccbias(N=100, β_XY=1, β_YZ=1)
+	X = rand(Normal(), N)
+	Y = rand.(Normal.(β_XY .* X, 1))
+	Z = rand.(Normal.(β_YZ .* Y, 1))
+	df = DataFrame([X, Z, Y], [:X, :Z, :Y])
+end
+
+# ╔═╡ 5ddbb19c-45c0-48b5-979b-dfd64b6c64ce
+coefs_ccbias = coef_sim(sim_ccbias)
+
+# ╔═╡ a9e0676c-4e53-4bbd-a599-ee4c342832c0
+plot_sim(coefs_ccbias)
+
+# ╔═╡ 1a5295bb-3343-4e15-9685-3a7d8f7ad4fb
+# Precision parasite Z -> X -> Y
+# Z explains away variation in X that can be used to explain Y
+# If we want to know about the effect of X on Y, we should not stratify by Z
+function sim_parasite(N=100, β_ZX=1, β_XY=1)
+	Z = rand(Normal(), N)
+	X = rand.(Normal.(β_ZX .* Z, 1))
+	Y = rand.(Normal.(β_XY .* X, 1))
+	df = DataFrame([X, Z, Y], [:X, :Z, :Y])
+end
+
+# ╔═╡ 595bcfe3-bf52-4f4e-9279-2123b693ece7
+coefs_parasite = coef_sim(sim_parasite)
+
+# ╔═╡ 7ce5e249-88ff-465b-93cb-bbe6640d64a5
+plot_sim(coefs_parasite)
+
+# ╔═╡ 3adeedfa-d377-4088-b647-697f21ceca23
+# Bias amplification Z --> X --> Y
+# 							<-u->
+# Stratifying by Z here increases the unavoidable bias caused by u
+function sim_amplifier(N=100, β_ZX=1, β_XY=0)
+	Z = rand(Normal(), N)
+	u = rand(Normal(), N)
+	X = rand.(Normal.(β_ZX .* Z + u, 1))
+	Y = rand.(Normal.(β_XY .* X + u, 1))
+	df = DataFrame([X, Z, Y], [:X, :Z, :Y])
+end
+
+# ╔═╡ 1e078026-9040-4082-82bf-d8a7306c7178
+coefs_amplifier = coef_sim(sim_amplifier)
+
+# ╔═╡ 43d1054b-ec23-4650-9d4c-377e81d62ff6
+plot_sim(coefs_amplifier)
+
+# ╔═╡ a385f685-993b-4207-b7b3-567042a6261c
+# For visualising what the amplifier looks like
+function sim_amplifier2()
+	N = 1000
+	Z = rand(Bernoulli(0.5), N)
+	u = rand(Normal(), N)
+	X = rand.(Normal.(7 .* Z .+ u, 1))
+	Y = rand.(Normal.(0 .* X .+ u, 1))
+	return DataFrame([Z, X, Y], [:Z, :X, :Y])
+end
+
+# ╔═╡ 0d651ed0-df62-4346-8168-57d00e634a40
+begin
+	coef_amplifier2 = coef_sim(sim_amplifier2)
+	α_X = mean([coef_amplifier2[i][1][1] for i in eachindex(coef_amplifier2)])
+	β_X = mean([coef_amplifier2[i][1][2] for i in eachindex(coef_amplifier2)])
+	α_XZ = mean([coef_amplifier2[i][2][1] for i in eachindex(coef_amplifier2)])
+	β_XZ = mean([coef_amplifier2[i][2][2] for i in eachindex(coef_amplifier2)])
+	β_Z = mean([coef_amplifier2[i][2][3] for i in eachindex(coef_amplifier2)])
+end
+
+# ╔═╡ 446f1491-ec45-4542-9063-a669e5ba92d8
+begin
+	fun_noamp = x -> α_X .+ β_X .* x
+	fun_amp0 = x -> α_XZ .+ β_XZ .* x .+ β_Z .* 0
+	fun_amp1 = x -> α_XZ .+ β_XZ .* x .+ β_Z .* 1
+end
+
+# ╔═╡ 45505092-d230-4025-8d62-6212985e6a04
+# Helper to plot lines with white stroke (not sure if there's a kwarg for this)
+function plot_stroke!(f::Function, color; stroke="white")
+	plot!(f, color=stroke, lw=2.5)
+	plot!(f, color=color, lw=1)
+end
+
+# ╔═╡ 06739773-bbfe-42fc-b64f-655d73c1957d
+begin
+	df_a2 = sim_amplifier2()
+	scatter(df_a2.X, df_a2.Y, color=Int64.(df_a2.Z.+1), alpha=0.4, legend=:none)
+	plot_stroke!(fun_noamp, "black")
+	plot_stroke!(fun_amp0, 1)
+	plot_stroke!(fun_amp1, 2)
+end
+# Not sure about adding white stroke to lines, it helps visually
+# But does it fit with the black stroke of the scatter?
+
+# ╔═╡ cca6eb96-3639-4ba3-9353-555c6e9142d4
+
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1394,10 +1507,25 @@ version = "1.4.1+0"
 # ╔═╡ Cell order:
 # ╠═96932ce2-2857-11ee-392b-312869ada1ba
 # ╠═23dfe535-7a54-46be-8a93-baac0d479fe5
-# ╠═fa5c0b1c-d43e-4d33-97ac-d898ebdc2b5a
-# ╠═84e02fc7-8d4d-4b0f-8244-323b24803e2d
-# ╠═685e0353-b22e-47f3-82df-78e9cda936cd
-# ╠═fa424d6f-eb4b-4472-9646-b0419a41aa32
-# ╠═c97ca281-ad8f-4c12-89e3-5ed81449bcd2
+# ╠═c13b384e-a3c5-47d1-be9d-320a79278429
+# ╠═fe1271d7-97ef-4434-87e8-e2c862b2a7b6
+# ╠═45edde93-686f-453b-a7f5-96a709e0db69
+# ╠═8c945749-9a69-487c-8903-ddde50e8b20d
+# ╠═101f48ef-7a0d-4f5e-96ff-9c6babcce1ef
+# ╠═8f316507-f344-451a-a432-90cb08103849
+# ╠═5ddbb19c-45c0-48b5-979b-dfd64b6c64ce
+# ╠═a9e0676c-4e53-4bbd-a599-ee4c342832c0
+# ╠═1a5295bb-3343-4e15-9685-3a7d8f7ad4fb
+# ╠═595bcfe3-bf52-4f4e-9279-2123b693ece7
+# ╠═7ce5e249-88ff-465b-93cb-bbe6640d64a5
+# ╠═3adeedfa-d377-4088-b647-697f21ceca23
+# ╠═1e078026-9040-4082-82bf-d8a7306c7178
+# ╠═43d1054b-ec23-4650-9d4c-377e81d62ff6
+# ╠═a385f685-993b-4207-b7b3-567042a6261c
+# ╠═0d651ed0-df62-4346-8168-57d00e634a40
+# ╠═446f1491-ec45-4542-9063-a669e5ba92d8
+# ╠═45505092-d230-4025-8d62-6212985e6a04
+# ╠═06739773-bbfe-42fc-b64f-655d73c1957d
+# ╠═cca6eb96-3639-4ba3-9353-555c6e9142d4
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

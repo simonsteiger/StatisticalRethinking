@@ -20,7 +20,7 @@ function sim_backdoor()
 	X = rand.(Normal.(β_ZX .* Z, 1))
 	Y = rand.(Normal.(β_XY .* X + β_UY .* U, 1))
 
-	df = DataFrame([X, Y, Z], [:X, :Y, :Z])
+    return DataFrame([X, Y, Z], [:X, :Y, :Z])
 end
 
 # ╔═╡ 7a31c022-fe4c-4a51-848c-c1719218677a
