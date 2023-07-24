@@ -4,212 +4,44 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ 6b8563d4-292c-11ee-3ca7-9d1ec0b13c98
-# This file explores categorical predictors through a data example
+# ╔═╡ ccdc6896-2a42-11ee-28a9-b5c5732ccab5
 begin
-	using CSV
-	import Downloads as DL
-	using DataFrames, Chain
-	using Distributions, Random, Turing, LinearAlgebra
-	using StatsPlots
-	import StatsBase as SB
+	using Distributions, StatsPlots, Turing, DataFrames, Chain
 end
 
-# ╔═╡ c5433fa0-2eb0-4d94-aeb2-d723ab61e9cd
-begin
-	remote = "https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/"
-	wines = CSV.read(DL.download(string(remote, "Wines2012.csv")), DataFrame)
-end
-
-# ╔═╡ 8e23934d-37c6-4fca-96f0-02f41ffe434c
-# DAG here is  
-#  Q > S
-#  ^ > ^
-#  X _ J < Z
-# with J = Judge, S = Score, W = Wine, X = Wine origin, Z = Judge origin, Q = Quality
-
-# ╔═╡ c57e628b-e447-413f-bd6b-05108cf96294
-# Helper for Z transformation
-function Ztrans(x::Vector{Float64}) 
-	ifelse.(ismissing(x), missing, (x .- mean(skipmissing(x))) ./ std(skipmissing(x)))
-end
-
-# ╔═╡ afa4cfff-802c-4695-9616-cb3fde4670bb
-# Create inputs for model
-begin
-	S = Ztrans(wines.score)
-	J = SB.denserank(wines.judge)
-	W = SB.denserank(wines.wine)
-	X = ifelse.(wines[!, "wine.amer"] .== 1, 1, 2)
-	Z = ifelse.(wines[!, "judge.amer"] .== 1, 1, 2)
-	DataFrame([S, J, W, X, Z], [:S, :J, :W, :X, :Z]) # Just for showcasing
-end
-
-# ╔═╡ bda5b3c0-8085-4863-b6a9-44b84196fa20
-@model function model_Q(W, S)
-	N = maximum(W) # should be ordinal rank always, so maximum is OK?
+# ╔═╡ fe0218eb-e201-431d-a419-5ad6f2237440
+function generate()
+	N = 1000 # Number of applications
+	G = rand([1, 2], N) # Even gender distribution
+	p = ifelse.(G .== 1, 0.3, 0.8) # Genders differ in prob to apply to a department
+	D = rand.(Bernoulli.(p)) .+ 1 # G1 -> D1, G2 -> D2 (tendency)
+	R = [0.1 0.1; 0.3 0.3] # Acceptance rates
+	A = [rand(Bernoulli(R[D[i], G[i]])) for i in 1:N]
 	
-	σ ~ Exponential(1)
-	Q ~ filldist(Normal(), N)
-	μ = Q[W]
-
-	return S ~ MvNormal(μ, σ^2)
+	return DataFrame([G, D, A], [:G, :D, :A])
 end
 
-# ╔═╡ 89cbacc3-ef51-4404-9590-bef6a5c2b7b8
-function quicksample(fun, params; iter=1000, threads=3)
-	m = fun(params...)
-	chn = sample(m, NUTS(), MCMCThreads(), iter, threads)
-	return chn
-end
-
-# ╔═╡ b44527a1-b521-4f6d-b154-73f3b8230e7a
-# Fit intercept-only model of Quality on Score
-begin
-	chn_O = quicksample(model_Q, [W, S])
-	describe(chn_O)[1] # let's only look at the first table (2nd table has quantiles)
-end
-
-# ╔═╡ fdd054b0-1d29-4cb4-9035-a639ef8df81c
-# Let's visualise the chains (delete ';' to see the plots)
-plot(chn_O);
-# Good chains look like a hairy caterpillar, wiggling around the high-density region
-# Bad chains jump around erratically, samples are highly correlated
-
-# Important to fit several chains:
-# - each chain starts at a different random starting location
-# - fitting several chains let's us check if all converge to same distribution
-# - problematic if chains explore different spaces!
-
-# ╔═╡ f9b1e1cf-c15e-4b49-9736-d5b091569a26
-@model function model_QO(W, X, S)
-	nQ = maximum(W)
-	nO = maximum(X)
-	
-	σ ~ Exponential(1)
-	Q ~ filldist(Normal(), nQ)
-	O ~ filldist(Normal(), nO)
-	μ = Q[W] + O[X]
-
-	return S ~ MvNormal(μ, σ^2)
-end
-
-# ╔═╡ b9f92be6-dc5b-4307-8f72-b53a598e3a73
-# Fit intercept-only (?) model of Quality and Origin on Score
-begin
-	chn_QO = quicksample(model_QO, [W, X, S])
-	describe(chn_QO)[1] # let's only look at the first table (2nd table has quantiles)
-end
-
-# ╔═╡ d6cfaa18-6575-4d4f-a542-151fe88ee435
-let df = DataFrame(describe(chn_QO)[1])
-	vline([0], color="grey80")
-	scatter!(df.mean, string.(df.parameters), xerror=df.std, label="mean", color=1)
-	yticks!([3:1:length(string.(df.parameters))+3;], string.(df.parameters))
-end
-
-# ╔═╡ 777e87c6-838b-484f-9b75-0cc117a8f8ab
-@model function model_QOJ(W, X, J, S)
-	nQ = maximum(W)
-	nO = maximum(X)
-	nJ = maximum(J)
-	
-	σ ~ Exponential(1)
-	Q ~ filldist(Normal(), nQ)
-	O ~ filldist(Normal(), nO)
-	H ~ filldist(Normal(), nJ) # Harshness of judge (necessary quality to score 0)
-	δ ~ filldist(Exponential(1), nJ) # Discrimination of judge (if 0, scores all 0)
-	μ = (Q[W] + O[X] .- H[J]) .* δ[J]
-
-	return S ~ MvNormal(μ, σ^2)
-end
-
-# ╔═╡ c02e74ce-b555-4ecb-884c-60cce9dbaf58
-# Fit item-response model
-begin
-	chn_QOJ = quicksample(model_QOJ, [W, X, J, S])
-	describe(chn_QOJ)[1] # let's only look at the first table (2nd table has quantiles)
-end
-
-# ╔═╡ a714ff3c-501c-4b88-8c55-1a1b2abde7a8
-let df = DataFrame(describe(chn_QOJ)[1])
-	vline([0], color="grey80")
-	scatter!(df.mean,
-			 string.(df.parameters),
-			 xerror=df.std,
-			 label="mean",
-			 color=1,
-			 size=(600,840),
-			 legend=:bottomright)
-	yticks!([3:1:length(string.(df.parameters))+3;], string.(df.parameters))
-	# I don't understand why we have this offset by 3
-end
-
-# ╔═╡ 6f553e47-ace1-42c0-b8b7-004e571074b4
-squash(x::AbstractArray) = reduce(hcat, x)'
-
-# ╔═╡ 7b4a1c84-4310-4ca6-9886-1af67d809663
-# Function to simulate do_O
-# default N is same as wines data (?)
-function do_O(W, J, X, Q, O, H, δ, σ; N=180)
-	# Create "observed" values
-	W = rand(W, N)
-	J = rand(J, N)
-	X = fill(X, N)
-	
-	# Simulate S values
-	S = map(1:N) do i
-		rand(Normal((Q[W[i]] + O[X[i]] - H[J[i]]) * δ[J[i]], σ))
+# ╔═╡ d986a89c-7e4b-4fdd-8bfa-f42106b0f1fc
+let df = generate()
+	@chain df begin
+		groupby(_, [:G, :D])
+		combine(_, [:A, :D] => ((a, d) -> sum(a)/length(d)))
 	end
-
-	return DataFrame([W, X, J, S], [:W, :X, :J, :S])
 end
-
-# ╔═╡ ec215062-938e-4d9f-8f2f-abf1cce010d3
-let chn = chn_QOJ
-	
-	# Get posterior samples
-	p = get_params(chn)
-	Q = mean.(squash.(p[:Q]))
-	O = mean.(squash.(p[:O]))
-	H = mean.(squash.(p[:H]))
-	δ = mean.(squash.(p[:δ]))
-	σ = mean(squash(p[:σ]))
-	
-	# Calculate contrast
-	contrasts = 
-		map(1:30) do _
-			O1 = do_O(W, J, 1, Q, O, H, δ, σ)
-			O2 = do_O(W, J, 2, Q, O, H, δ, σ)
-			O2.S .- O1.S
-		end
-
-	# Plot distribution of all the contrasts
-	density(contrasts, color=1, alpha=0.15, legend=:none)
-end
-# 2 is French, 1 is American => positive difference means french is better
-# Origin of the wine doesn't play a major role
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
-Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
-LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
-CSV = "~0.10.11"
 Chain = "~0.5.0"
 DataFrames = "~1.6.0"
 Distributions = "~0.25.98"
-StatsBase = "~0.34.0"
 StatsPlots = "~0.15.6"
 Turing = "~0.26.5"
 """
@@ -220,7 +52,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.1"
 manifest_format = "2.0"
-project_hash = "a1b4df1a19bbd1c8fe29d18569fbf97c0f663ba3"
+project_hash = "d77efdf27695a88b605e3b01ed653c93dd204b0c"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e58c18d2312749847a74f5be80bb0fa53da102bd"
@@ -433,12 +265,6 @@ version = "1.0.8+0"
 git-tree-sha1 = "eb4cb44a499229b3b8426dcfb5dd85333951ff90"
 uuid = "fa961155-64e5-5f13-b03f-caf6b980ea82"
 version = "0.4.2"
-
-[[deps.CSV]]
-deps = ["CodecZlib", "Dates", "FilePathsBase", "InlineStrings", "Mmap", "Parsers", "PooledArrays", "PrecompileTools", "SentinelArrays", "Tables", "Unicode", "WeakRefStrings", "WorkerUtilities"]
-git-tree-sha1 = "44dbf560808d49041989b8a96cae4cffbeb7966a"
-uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-version = "0.10.11"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -756,12 +582,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "c6033cc3892d0ef5bb9cd29b7f2f0331ea5184ea"
 uuid = "f5851436-0d7a-5f13-b9de-f02708fd171a"
 version = "3.3.10+0"
-
-[[deps.FilePathsBase]]
-deps = ["Compat", "Dates", "Mmap", "Printf", "Test", "UUIDs"]
-git-tree-sha1 = "e27c4ebe80e8699540f2d6c805cc12203b614f12"
-uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
-version = "0.9.20"
 
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -1966,12 +1786,6 @@ git-tree-sha1 = "4528479aa01ee1b3b4cd0e6faef0e04cf16466da"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.25.0+0"
 
-[[deps.WeakRefStrings]]
-deps = ["DataAPI", "InlineStrings", "Parsers"]
-git-tree-sha1 = "b1be2855ed9ed8eac54e5caff2afcdb442d52c23"
-uuid = "ea10d353-3f73-51f8-a26c-33c1cb351aa5"
-version = "1.4.2"
-
 [[deps.Widgets]]
 deps = ["Colors", "Dates", "Observables", "OrderedCollections"]
 git-tree-sha1 = "fcdae142c1cfc7d89de2d11e08721d0f2f86c98a"
@@ -1983,11 +1797,6 @@ deps = ["LinearAlgebra", "SparseArrays"]
 git-tree-sha1 = "de67fa59e33ad156a590055375a30b23c40299d3"
 uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
 version = "0.5.5"
-
-[[deps.WorkerUtilities]]
-git-tree-sha1 = "cd1659ba0d57b71a464a29e64dbc67cfe83d54e7"
-uuid = "76eceee3-57b5-4d4a-8e66-0e911cebbf60"
-version = "1.6.1"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "Zlib_jll"]
@@ -2215,23 +2024,8 @@ version = "1.4.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═6b8563d4-292c-11ee-3ca7-9d1ec0b13c98
-# ╠═c5433fa0-2eb0-4d94-aeb2-d723ab61e9cd
-# ╠═8e23934d-37c6-4fca-96f0-02f41ffe434c
-# ╠═c57e628b-e447-413f-bd6b-05108cf96294
-# ╠═afa4cfff-802c-4695-9616-cb3fde4670bb
-# ╠═bda5b3c0-8085-4863-b6a9-44b84196fa20
-# ╠═89cbacc3-ef51-4404-9590-bef6a5c2b7b8
-# ╠═b44527a1-b521-4f6d-b154-73f3b8230e7a
-# ╠═fdd054b0-1d29-4cb4-9035-a639ef8df81c
-# ╠═f9b1e1cf-c15e-4b49-9736-d5b091569a26
-# ╠═b9f92be6-dc5b-4307-8f72-b53a598e3a73
-# ╠═d6cfaa18-6575-4d4f-a542-151fe88ee435
-# ╠═777e87c6-838b-484f-9b75-0cc117a8f8ab
-# ╠═c02e74ce-b555-4ecb-884c-60cce9dbaf58
-# ╠═a714ff3c-501c-4b88-8c55-1a1b2abde7a8
-# ╠═6f553e47-ace1-42c0-b8b7-004e571074b4
-# ╠═7b4a1c84-4310-4ca6-9886-1af67d809663
-# ╠═ec215062-938e-4d9f-8f2f-abf1cce010d3
+# ╠═ccdc6896-2a42-11ee-28a9-b5c5732ccab5
+# ╠═fe0218eb-e201-431d-a419-5ad6f2237440
+# ╠═d986a89c-7e4b-4fdd-8bfa-f42106b0f1fc
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
