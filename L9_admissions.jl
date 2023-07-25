@@ -7,10 +7,11 @@ using InteractiveUtils
 # ╔═╡ ccdc6896-2a42-11ee-28a9-b5c5732ccab5
 begin
 	using Distributions, StatsPlots, Turing, DataFrames, Chain
+	using LogExpFunctions
 end
 
 # ╔═╡ fe0218eb-e201-431d-a419-5ad6f2237440
-function generate()
+function sim_admissions()
 	N = 1000 # Number of applications
 	G = rand([1, 2], N) # Even gender distribution
 	p = ifelse.(G .== 1, 0.3, 0.8) # Genders differ in prob to apply to a department
@@ -22,11 +23,31 @@ function generate()
 end
 
 # ╔═╡ d986a89c-7e4b-4fdd-8bfa-f42106b0f1fc
-let df = generate()
+let df = sim_admissions()
 	@chain df begin
-		groupby(_, [:G, :D])
-		combine(_, [:A, :D] => ((a, d) -> sum(a)/length(d)))
+		groupby(_, [:G])
+		combine(_, :A => (x -> sum(x)/500) => :A_ratio)
+		# looks pretty bad if we group only by G!
 	end
+end
+
+# ╔═╡ 5389437f-2a54-461f-96d3-fc5bc3c6bdb0
+# What do priors mean in logit space? The typical Normal(0, 10) looks horrible!
+let N = 10_000, v = [10, 1.5, 1, 0.5]
+	p = density()
+	[density!(logistic.(rand(Normal(0, σ), N)), label="σ=$σ", lw=1.5) for σ in v]
+	p
+end
+
+# ╔═╡ fb5fe4b6-b6a5-4a22-a087-5c6175fe2562
+let N = 12
+	α, β = [rand(Normal(0, 10), N) for _ in 1:2]
+	p = plot()
+	map(1:N) do i
+		plot!([logistic(α[i] + β[i] * x) for x in -5:0.1:5], color=1, legend=:none)
+	end
+	p
+	# Mhh, pretty wild stuff with these priors again!
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -35,6 +56,7 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
@@ -42,6 +64,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Chain = "~0.5.0"
 DataFrames = "~1.6.0"
 Distributions = "~0.25.98"
+LogExpFunctions = "~0.3.24"
 StatsPlots = "~0.15.6"
 Turing = "~0.26.5"
 """
@@ -52,7 +75,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.1"
 manifest_format = "2.0"
-project_hash = "d77efdf27695a88b605e3b01ed653c93dd204b0c"
+project_hash = "0e727ef527589da3204caeed77b941fcb653cc23"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e58c18d2312749847a74f5be80bb0fa53da102bd"
@@ -2027,5 +2050,7 @@ version = "1.4.1+0"
 # ╠═ccdc6896-2a42-11ee-28a9-b5c5732ccab5
 # ╠═fe0218eb-e201-431d-a419-5ad6f2237440
 # ╠═d986a89c-7e4b-4fdd-8bfa-f42106b0f1fc
+# ╠═5389437f-2a54-461f-96d3-fc5bc3c6bdb0
+# ╠═fb5fe4b6-b6a5-4a22-a087-5c6175fe2562
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
