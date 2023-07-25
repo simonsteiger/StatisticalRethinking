@@ -40,14 +40,43 @@ let N = 10_000, v = [10, 1.5, 1, 0.5]
 end
 
 # ╔═╡ fb5fe4b6-b6a5-4a22-a087-5c6175fe2562
-let N = 12
-	α, β = [rand(Normal(0, 10), N) for _ in 1:2]
+let N = 5, seq = -5:0.1:5, σ = 10
+	α, β = [rand(Normal(0, σ), N) for _ in 1:2]
 	p = plot()
 	map(1:N) do i
-		plot!([logistic(α[i] + β[i] * x) for x in -5:0.1:5], color=1, legend=:none)
+		plot!([logistic(α[i] + β[i] * x) for x in seq], lw=1.5, legend=:none)
 	end
 	p
 	# Mhh, pretty wild stuff with these priors again!
+end
+
+# ╔═╡ 72987cf3-8062-4908-a502-87f9ca378a41
+# Something more regularising, more defensible
+let N = 5, seq = -5:0.1:5, sd = [1.5, 0.5]
+	α, β = [rand(Normal(0, σ), N) for σ in sd]
+	p = plot()
+	map(1:N) do i
+		plot!([logistic(α[i] + β[i] * x) for x in seq], lw=1.5, legend=:none)
+	end
+	p
+	# Mhh, pretty wild stuff with these priors again!
+end
+
+# ╔═╡ e049a7a0-d900-45e8-b39c-df25232fc97d
+@model function model_admissions(G, A)
+	nG = length(unique(G))
+	α ~ filldist(Normal(0, 1), nG)
+	p = logistic.(α[G])
+	
+	return A .~ Bernoulli.(p)
+end
+
+# ╔═╡ 089cc9ca-ea93-484f-9c3b-17609581f454
+begin
+	df = sim_admissions()
+	m = model_admissions(df.G, df.A)
+	chn = sample(m, NUTS(), 1000)
+	describe(chn)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2052,5 +2081,8 @@ version = "1.4.1+0"
 # ╠═d986a89c-7e4b-4fdd-8bfa-f42106b0f1fc
 # ╠═5389437f-2a54-461f-96d3-fc5bc3c6bdb0
 # ╠═fb5fe4b6-b6a5-4a22-a087-5c6175fe2562
+# ╠═72987cf3-8062-4908-a502-87f9ca378a41
+# ╠═e049a7a0-d900-45e8-b39c-df25232fc97d
+# ╠═089cc9ca-ea93-484f-9c3b-17609581f454
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
