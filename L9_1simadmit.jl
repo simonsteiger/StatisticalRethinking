@@ -65,16 +65,25 @@ let N = 5, seq = -5:0.1:5, sd = [1.5, 0.5]
 	# Mhh, pretty wild stuff with these priors again!
 end
 
+# ╔═╡ 7c9a680b-e6a5-4332-be42-3bea73a0eed6
+# Let's make that long df wide
+wide = @chain df begin
+	DataFrames.transform(:A => (x -> (reject=x .== 0, admit=x .== 1)) => AsTable)
+	groupby([:G, :D])
+	combine([:admit, :reject] .=> sum .=> [:A, :R])
+	DataFrames.transform([:A, :R] => ByRow((x, y) -> x + y) => :N)
+end
+
 # ╔═╡ 5f421893-1539-4403-9cdf-f86dfe395444
 n_distinct(x) = length(unique(x))
 
 # ╔═╡ e049a7a0-d900-45e8-b39c-df25232fc97d
-@model function model_G(G, A)
+@model function model_G(G, A, N)
 	nG = n_distinct(G)
 	α ~ filldist(Normal(0, 1), nG)
-	p = logistic.(α[G])
+	p = α[G]
 	
-	return A .~ Bernoulli.(p)
+	return A .~ BinomialLogit.(N, p)
 end
 
 # ╔═╡ d0693801-99be-4432-9329-24dfbae77d59
@@ -86,36 +95,25 @@ end
 
 # ╔═╡ 5a5db7e7-28e3-4d7c-9f47-d33da65ddf5d
 begin
-	chn_G = quicksample(model_G, df.G, df.A)
+	chn_G = quicksample(model_G, wide.G, wide.A, wide.N)
 	describe(chn_G)
 end
 
 # ╔═╡ 7560db59-1fbb-492a-920d-0589d77733de
-@model function model_GD(G, D, A)
+@model function model_GD(G, D, A, N, σ)
 	nD = n_distinct(D)
 	nG = n_distinct(G)
-	dep ~ filldist(Normal(0, 1), nD)
-    gen ~ filldist(Normal(0, 1), nG)
-	p = logistic.(dep[D] .+ gen[G])
+	α ~ filldist(Normal(0, 1), nD, nG)
 	
-	return A .~ Bernoulli.(p)
+	p = α[D, G]
+	return A .~ BinomialLogit.(N, p)
 end
 
 # ╔═╡ 5810ebbc-1fdb-4ad6-953f-43e95b7aae26
 # I am confused about the std being so tightly connected to the prior
 begin
-	chn_GD = quicksample(model_GD, df.G, df.D, df.A, iter=1000, threads=3)
-	#describe(chn_GD)
-end
-
-# ╔═╡ be0075ea-802a-4a66-9b7c-3e040bd5d5af
-begin
-    squash(x) = reduce(hcat, x)'
-    chain_to_prob(chn, param) = get_params(chn)[param] .|> squash .|> mean .|> logistic
-    gen = chain_to_prob(chn_GD, :gen)
-    dep = chain_to_prob(chn_GD, :dep)
-    # Differences between genders marginal, but large between departments
-    # would be nice to plot these
+	chn_GD = quicksample(model_GD, wide.G, wide.D, wide.A, wide.N, 1)
+	describe(chn_GD)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -124,7 +122,7 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
-LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
+StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
@@ -132,7 +130,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Chain = "~0.5.0"
 DataFrames = "~1.6.1"
 Distributions = "~0.25.98"
-LogExpFunctions = "~0.3.24"
+StatsFuns = "~1.3.0"
 StatsPlots = "~0.15.6"
 Turing = "~0.27.0"
 """
@@ -143,7 +141,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.1"
 manifest_format = "2.0"
-project_hash = "a0d9d5827ab4b730381979f20b9ad4f6ea965ccd"
+project_hash = "f3960a7fc8df047b5daec81ba12e2390d7f26816"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f5c25e8a5b29b5e941b7408bc8cc79fea4d9ef9a"
@@ -2148,13 +2146,12 @@ version = "1.4.1+0"
 # ╠═5389437f-2a54-461f-96d3-fc5bc3c6bdb0
 # ╠═fb5fe4b6-b6a5-4a22-a087-5c6175fe2562
 # ╠═72987cf3-8062-4908-a502-87f9ca378a41
+# ╠═7c9a680b-e6a5-4332-be42-3bea73a0eed6
 # ╠═5f421893-1539-4403-9cdf-f86dfe395444
 # ╠═e049a7a0-d900-45e8-b39c-df25232fc97d
 # ╠═d0693801-99be-4432-9329-24dfbae77d59
 # ╠═5a5db7e7-28e3-4d7c-9f47-d33da65ddf5d
 # ╠═7560db59-1fbb-492a-920d-0589d77733de
 # ╠═5810ebbc-1fdb-4ad6-953f-43e95b7aae26
-# ╠═be0075ea-802a-4a66-9b7c-3e040bd5d5af
-# ╠═a5875cf7-0eba-42cb-89de-2f3eb000c8be
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
