@@ -6,7 +6,7 @@ using InteractiveUtils
 
 # ╔═╡ 09e8c774-2de6-11ee-39cb-8d27d264842c
 begin
-	using Turing, StatsFuns, StatsPlots, CSV, Chain, DataFrames
+	using Turing, StatsPlots, CSV, Chain, DataFrames, StatsFuns
 	import Downloads as DL
 	import StatsBase as SB
 end
@@ -28,7 +28,7 @@ end
 
 # ╔═╡ f089918e-3c63-4094-920e-a331d38a1869
 begin
-	G = ifelse.(ucb_agg.gender .== "male", 1, 2)
+	G = ifelse.(ucb_agg.gender .== "female", 1, 2)
 	D = SB.denserank(ucb_agg.dept)
 	A = ucb_agg.admits
 	N = ucb_agg.total
@@ -44,13 +44,16 @@ end
 # ╔═╡ 1f89d65a-b20b-4879-8306-222878f09d9e
 n_distinct(x) = length(unique(x))
 
+# ╔═╡ 6cbfc7c5-b847-47d7-b236-afd861193740
+squash(x) = reduce(hcat, x)'
+
 # ╔═╡ 05492059-ce38-41dd-b54a-f91cf6947391
 # This model has the same structure as that in the simulation part
 @model function model_G(G, A, N, σ)
 	nG = n_distinct(G)
-    gen ~ filldist(Normal(0, σ), nG)
+    α ~ filldist(Normal(0, σ), nG)
 	
-	p = gen[G]
+	p = α[G]
 	return A .~ BinomialLogit.(N, p)
 end
 
@@ -60,48 +63,80 @@ begin
 	describe(chn_G)
 end
 
-# ╔═╡ d88c82ed-7007-4845-af59-904b141cba3f
-# This model has the same structure as that in the simulation part
-@model function model_GD(G, D, A, N, σ)
-	nD = n_distinct(D)
-	nG = n_distinct(G)
-	dep ~ filldist(Normal(0, σ), nD)
-    gen ~ filldist(Normal(0, σ), nG)
-	
-	p = dep[D] + gen[G]
-	return A .~ BinomialLogit.(N, p)
+# ╔═╡ 6b8fb204-44e5-492d-8df2-c62e6ec8d1d7
+let
+	PrA_G1 = chn_G[Symbol("α[1]")] |> squash .|> logistic
+	PrA_G2 = chn_G[Symbol("α[2]")] |> squash .|> logistic
+	density(PrA_G1 .- PrA_G2)
 end
 
+# ╔═╡ 67f0d56b-578f-493e-8dbb-394c91ae670e
+M = [i == "male" ? 1 : 0 for i in ucb_agg.gender] # M for male at 1, female at 0
+
 # ╔═╡ ea46916e-e9df-4c3b-b727-2dc619b51e6c
-# This model has the structure which was too slow in the simulation part
-@model function model_GD2(G, D, A, N, σ)
+# Why can't we write the model like McElreath does? Does Turing not allow this?
+@model function model_GD(M, D, A, N, σ)
 	nD = n_distinct(D)
-	nG = n_distinct(G)
-    α ~ filldist(Normal(0, σ), nD, nG)
+    α ~ filldist(Normal(0, σ), nD)
+	β ~ filldist(Normal(0, σ), nD)
 	
-	p = α[D, G]
+	p = α[D] + β[D] .* M
 	return A .~ BinomialLogit.(N, p)
 end
 
 # ╔═╡ 3592c0cb-547a-4ed8-a442-f8b35de57fa8
-let G = ucb_agg.gender, D = ucb_agg.dept, A = ucb_agg.admits, N = ucb_agg.total
-	G = ifelse.(G .== "male", 1, 2)
-	D = SB.denserank(D)
-	chn_GD2 = quicksample(model_GD2, G, D, A, N, 1)
-	describe(chn_GD2)
+begin
+	chn_GD = quicksample(model_GD, M, D, A, N, 1)
+	describe(chn_GD)
 end
 # I prefer mGD2 over mGD where we still have to calculate crossprods
 
-# ╔═╡ 67f0d56b-578f-493e-8dbb-394c91ae670e
+# ╔═╡ 0cf705fb-8057-40d2-9d6a-5bb079f5cef7
+# Plot posterior contrasts per department
 begin
-	chn_GD = quicksample(model_GD, G, D, A, N, 1)
-	describe(chn_GD)
+	function gender_contrast_at(d)
+		F = chn_GD[Symbol("α[$d]")] |> squash .|> logistic
+		M = @chain begin
+			DataFrame(chn_GD[[Symbol("α[$d]"), Symbol("β[$d]")]])
+			select(["α[$d]", "β[$d]"] => ((x, y) -> logistic.(x .+ y)) => :estimate)
+			getproperty(:estimate)
+		end
+		F .- M
+	end
+	gender_contrast_at(1)
+	p = density()
+	map(1:n_distinct(D)) do d
+		density!(gender_contrast_at(d), label="dept $d", lw=1.5)
+	end
+	title!("Posterior contrasts per department\nM advantage <-----> F advantage")
 end
 
-# ╔═╡ 46a45faf-320e-4d6b-8d33-23029ed664d7
+# ╔═╡ 3cdcec87-37b4-4a3f-b8d1-677c064a033f
+@model function model_GD2(G, D, A, N, σ)
+	nD, nG = n_distinct.([D, G])
+    α ~ filldist(Normal(0, σ), nD, nG)
+	
+	for i in eachindex(N)
+		p = α[D[i], G[i]]
+		A[i] ~ BinomialLogit(N[i], p)
+	end
+end
+
+# ╔═╡ 2f347760-0e73-4aea-a79b-6726d2d34c66
 begin
-	chn_GD = quicksample(model_GD, G, D, A, N, 1)
-	describe(chn_GD)
+	chn_GD2 = quicksample(model_GD2, G, D, A, N, 1)
+	describe(chn_GD2)
+end
+
+# ╔═╡ 925ce73c-df45-4049-9ebb-113e3bd43a77
+begin
+	df = DataFrame(chn_GD2)[:, r"α|β"] .|> logistic
+	
+	q = density()
+	map(1:n_distinct(D)) do d
+		density!(df[:, "α[$d,1]"] .- df[:, "α[$d,2]"], label="dept $d")
+	end
+	title!("Posterior contrasts per department\nM advantage <-----> F advantage")
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -130,7 +165,7 @@ Turing = "~0.27.0"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.9.1"
+julia_version = "1.9.2"
 manifest_format = "2.0"
 project_hash = "cbc6c6a15cb914036fcc619fefd0c126636001b5"
 
@@ -460,7 +495,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.0.2+0"
+version = "1.0.5+0"
 
 [[deps.CompositionsBase]]
 git-tree-sha1 = "802bb88cd69dfd1509f6670416bd4434015693ad"
@@ -1354,7 +1389,7 @@ version = "0.42.2+0"
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.9.0"
+version = "1.9.2"
 
 [[deps.PlotThemes]]
 deps = ["PlotUtils", "Statistics"]
@@ -2159,12 +2194,16 @@ version = "1.4.1+0"
 # ╠═f089918e-3c63-4094-920e-a331d38a1869
 # ╠═b305f2eb-b1fe-4157-b711-fd6aeee38b11
 # ╠═1f89d65a-b20b-4879-8306-222878f09d9e
+# ╠═6cbfc7c5-b847-47d7-b236-afd861193740
 # ╠═05492059-ce38-41dd-b54a-f91cf6947391
 # ╠═8e513c5c-93e2-468e-b5d5-024f3f0b1e7d
-# ╠═46a45faf-320e-4d6b-8d33-23029ed664d7
-# ╠═d88c82ed-7007-4845-af59-904b141cba3f
+# ╠═6b8fb204-44e5-492d-8df2-c62e6ec8d1d7
 # ╠═67f0d56b-578f-493e-8dbb-394c91ae670e
 # ╠═ea46916e-e9df-4c3b-b727-2dc619b51e6c
 # ╠═3592c0cb-547a-4ed8-a442-f8b35de57fa8
+# ╠═0cf705fb-8057-40d2-9d6a-5bb079f5cef7
+# ╠═3cdcec87-37b4-4a3f-b8d1-677c064a033f
+# ╠═2f347760-0e73-4aea-a79b-6726d2d34c66
+# ╠═925ce73c-df45-4049-9ebb-113e3bd43a77
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

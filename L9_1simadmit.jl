@@ -77,6 +77,9 @@ end
 # ╔═╡ 5f421893-1539-4403-9cdf-f86dfe395444
 n_distinct(x) = length(unique(x))
 
+# ╔═╡ 8bf6946f-e7db-4c08-b3aa-cabc4bc2f26d
+squash(x) = reduce(hcat, x)'
+
 # ╔═╡ e049a7a0-d900-45e8-b39c-df25232fc97d
 @model function model_G(G, A, N)
 	nG = n_distinct(G)
@@ -109,11 +112,30 @@ end
 	return A .~ BinomialLogit.(N, p)
 end
 
+# ╔═╡ 77c4ea92-c52e-475c-9e5f-4c10d4b196ea
+@model function model_GD2(G, D, A, N, σ)
+	nD = n_distinct(D)
+	nG = n_distinct(G)
+	α ~ filldist(Normal(0, 1), nD)
+	β ~ filldist(Normal(0, 1), nD)
+	
+	p = α[D] + β[D] .* (G .- 1)
+	return A .~ BinomialLogit.(N, p)
+end
+
 # ╔═╡ 5810ebbc-1fdb-4ad6-953f-43e95b7aae26
-# I am confused about the std being so tightly connected to the prior
 begin
 	chn_GD = quicksample(model_GD, wide.G, wide.D, wide.A, wide.N, 1)
 	describe(chn_GD)
+end
+
+# ╔═╡ 7ae93f6b-b480-4a21-8a8c-9f8fcf6ac2bc
+chn_GD[Symbol("α[2,1]")] |> squash .|> logistic |> mean
+
+# ╔═╡ 87afec01-6bef-47bb-aa1e-b00372c499f8
+begin
+	chn_GD2 = quicksample(model_GD2, wide.G, wide.D, wide.A, wide.N, 1)
+	describe(chn_GD2)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -139,7 +161,7 @@ Turing = "~0.27.0"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.9.1"
+julia_version = "1.9.2"
 manifest_format = "2.0"
 project_hash = "f3960a7fc8df047b5daec81ba12e2390d7f26816"
 
@@ -463,7 +485,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.0.2+0"
+version = "1.0.5+0"
 
 [[deps.CompositionsBase]]
 git-tree-sha1 = "802bb88cd69dfd1509f6670416bd4434015693ad"
@@ -1351,7 +1373,7 @@ version = "0.42.2+0"
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.9.0"
+version = "1.9.2"
 
 [[deps.PlotThemes]]
 deps = ["PlotUtils", "Statistics"]
@@ -2148,10 +2170,14 @@ version = "1.4.1+0"
 # ╠═72987cf3-8062-4908-a502-87f9ca378a41
 # ╠═7c9a680b-e6a5-4332-be42-3bea73a0eed6
 # ╠═5f421893-1539-4403-9cdf-f86dfe395444
+# ╠═8bf6946f-e7db-4c08-b3aa-cabc4bc2f26d
 # ╠═e049a7a0-d900-45e8-b39c-df25232fc97d
 # ╠═d0693801-99be-4432-9329-24dfbae77d59
 # ╠═5a5db7e7-28e3-4d7c-9f47-d33da65ddf5d
 # ╠═7560db59-1fbb-492a-920d-0589d77733de
+# ╠═77c4ea92-c52e-475c-9e5f-4c10d4b196ea
 # ╠═5810ebbc-1fdb-4ad6-953f-43e95b7aae26
+# ╠═7ae93f6b-b480-4a21-8a8c-9f8fcf6ac2bc
+# ╠═87afec01-6bef-47bb-aa1e-b00372c499f8
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
