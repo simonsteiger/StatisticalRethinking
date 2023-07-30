@@ -7,6 +7,7 @@ using InteractiveUtils
 # ╔═╡ 09e8c774-2de6-11ee-39cb-8d27d264842c
 begin
 	using Turing, StatsPlots, CSV, Chain, DataFrames, StatsFuns
+	using FillArrays
 	import Downloads as DL
 	import StatsBase as SB
 end
@@ -70,49 +71,8 @@ let
 	density(PrA_G1 .- PrA_G2)
 end
 
-# ╔═╡ 67f0d56b-578f-493e-8dbb-394c91ae670e
-M = [i == "male" ? 1 : 0 for i in ucb_agg.gender] # M for male at 1, female at 0
-
-# ╔═╡ ea46916e-e9df-4c3b-b727-2dc619b51e6c
-# Why can't we write the model like McElreath does? Does Turing not allow this?
-@model function model_GD(M, D, A, N, σ)
-	nD = n_distinct(D)
-    α ~ filldist(Normal(0, σ), nD)
-	β ~ filldist(Normal(0, σ), nD)
-	
-	p = α[D] + β[D] .* M
-	return A .~ BinomialLogit.(N, p)
-end
-
-# ╔═╡ 3592c0cb-547a-4ed8-a442-f8b35de57fa8
-begin
-	chn_GD = quicksample(model_GD, M, D, A, N, 1)
-	describe(chn_GD)
-end
-# I prefer mGD2 over mGD where we still have to calculate crossprods
-
-# ╔═╡ 0cf705fb-8057-40d2-9d6a-5bb079f5cef7
-# Plot posterior contrasts per department
-begin
-	function gender_contrast_at(d)
-		F = chn_GD[Symbol("α[$d]")] |> squash .|> logistic
-		M = @chain begin
-			DataFrame(chn_GD[[Symbol("α[$d]"), Symbol("β[$d]")]])
-			select(["α[$d]", "β[$d]"] => ((x, y) -> logistic.(x .+ y)) => :estimate)
-			getproperty(:estimate)
-		end
-		F .- M
-	end
-	gender_contrast_at(1)
-	p = density()
-	map(1:n_distinct(D)) do d
-		density!(gender_contrast_at(d), label="dept $d", lw=1.5)
-	end
-	title!("Posterior contrasts per department\nM advantage <-----> F advantage")
-end
-
 # ╔═╡ 3cdcec87-37b4-4a3f-b8d1-677c064a033f
-@model function model_GD2(G, D, A, N, σ)
+@model function model_GD(G, D, A, N, σ)
 	nD, nG = n_distinct.([D, G])
     α ~ filldist(Normal(0, σ), nD, nG)
 	
@@ -124,19 +84,55 @@ end
 
 # ╔═╡ 2f347760-0e73-4aea-a79b-6726d2d34c66
 begin
-	chn_GD2 = quicksample(model_GD2, G, D, A, N, 1)
-	describe(chn_GD2)
+	chn_GD = quicksample(model_GD, G, D, A, N, 1)
+	describe(chn_GD)
 end
 
 # ╔═╡ 925ce73c-df45-4049-9ebb-113e3bd43a77
+# Males are advantaged in departments with negative contrasts and vice versa
 begin
-	df = DataFrame(chn_GD2)[:, r"α|β"] .|> logistic
+	df = DataFrame(chn_GD)[:, r"α|β"] .|> logistic
 	
 	q = density()
 	map(1:n_distinct(D)) do d
-		density!(df[:, "α[$d,1]"] .- df[:, "α[$d,2]"], label="dept $d")
+		density!(df[:, "α[$d,1]"] .- df[:, "α[$d,2]"], label="dept $d", lw=1.5)
 	end
-	title!("Posterior contrasts per department\nM advantage <-----> F advantage")
+	vline!([0], color="black", ls=:dash, label=:none)
+end
+
+# ╔═╡ 3d48509a-21ff-4092-9c2f-181ea2f43909
+total = @chain ucb_agg begin
+	groupby(:dept)
+	combine(:total => sum => identity)
+	getproperty(:total)
+end
+
+# ╔═╡ 4274ada6-76b4-4c01-b314-40776b212bdf
+function do_G(N, chn)
+	A = zeros(size(chn, 1))
+	for i in eachindex(A)
+		p = chn[i]
+		A[i] = rand(BinomialLogit(N, p))
+	end
+	A
+end
+
+# ╔═╡ 906b8daa-4c20-43e6-bd59-190ef805816d
+# We assume all applications are from a single gender
+# Let our model predict the number of admissions per gender and dept
+# Calculate the ratio of admissions / total applications
+# and then the contrast between genders.
+# Then plot!
+let dict = Dict(), p = plot(), T = total, chn = chn_GD
+	map(1:25) do _
+		[dict["$d,$g"] = do_G(T[d], chn["α[$d,$g]"]) / T[d] for d in 1:6, g in 1:2]
+		@chain begin 
+			[dict["$d,1"] .- dict["$d,2"] for d in 1:6]
+			reduce(vcat, _)
+			density!(_, label=:none, alpha=0.1, color=1)
+		end
+	end
+	xlabel!("effect of gender perception")
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -146,6 +142,7 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
@@ -155,6 +152,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 CSV = "~0.10.11"
 Chain = "~0.5.0"
 DataFrames = "~1.6.1"
+FillArrays = "~1.5.0"
 StatsBase = "~0.34.0"
 StatsFuns = "~1.3.0"
 StatsPlots = "~0.15.6"
@@ -167,7 +165,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "cbc6c6a15cb914036fcc619fefd0c126636001b5"
+project_hash = "565e7eb5b0d5a297c42b262aec0111e0bf634388"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f5c25e8a5b29b5e941b7408bc8cc79fea4d9ef9a"
@@ -2198,12 +2196,11 @@ version = "1.4.1+0"
 # ╠═05492059-ce38-41dd-b54a-f91cf6947391
 # ╠═8e513c5c-93e2-468e-b5d5-024f3f0b1e7d
 # ╠═6b8fb204-44e5-492d-8df2-c62e6ec8d1d7
-# ╠═67f0d56b-578f-493e-8dbb-394c91ae670e
-# ╠═ea46916e-e9df-4c3b-b727-2dc619b51e6c
-# ╠═3592c0cb-547a-4ed8-a442-f8b35de57fa8
-# ╠═0cf705fb-8057-40d2-9d6a-5bb079f5cef7
 # ╠═3cdcec87-37b4-4a3f-b8d1-677c064a033f
 # ╠═2f347760-0e73-4aea-a79b-6726d2d34c66
 # ╠═925ce73c-df45-4049-9ebb-113e3bd43a77
+# ╠═3d48509a-21ff-4092-9c2f-181ea2f43909
+# ╠═4274ada6-76b4-4c01-b314-40776b212bdf
+# ╠═906b8daa-4c20-43e6-bd59-190ef805816d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

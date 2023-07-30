@@ -103,16 +103,19 @@ begin
 end
 
 # ╔═╡ 7560db59-1fbb-492a-920d-0589d77733de
+# First way to code the model is with effect coding like McElreath
 @model function model_GD(G, D, A, N, σ)
-	nD = n_distinct(D)
-	nG = n_distinct(G)
-	α ~ filldist(Normal(0, 1), nD, nG)
+	nD, nG = n_distinct.([D, G])
+	α ~ filldist(Normal(0, σ), nD, nG)
 	
-	p = α[D, G]
-	return A .~ BinomialLogit.(N, p)
+	for i in eachindex(N)
+		p = α[D[i], G[i]]
+		A[i] ~ BinomialLogit(N[i], p)
+	end
 end
 
 # ╔═╡ 77c4ea92-c52e-475c-9e5f-4c10d4b196ea
+# Another way would be to use one-hot encoding for gender
 @model function model_GD2(G, D, A, N, σ)
 	nD = n_distinct(D)
 	nG = n_distinct(G)
@@ -129,13 +132,13 @@ begin
 	describe(chn_GD)
 end
 
-# ╔═╡ 7ae93f6b-b480-4a21-8a8c-9f8fcf6ac2bc
-chn_GD[Symbol("α[2,1]")] |> squash .|> logistic |> mean
-
 # ╔═╡ 87afec01-6bef-47bb-aa1e-b00372c499f8
 begin
 	chn_GD2 = quicksample(model_GD2, wide.G, wide.D, wide.A, wide.N, 1)
 	describe(chn_GD2)
+	# The alpha parameters here are the predictions for gender 1 at dep1 and dep2
+	# For gender 2, we need to add the βs per dep
+	# Then logistic transformation to get back into probability space
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2177,7 +2180,6 @@ version = "1.4.1+0"
 # ╠═7560db59-1fbb-492a-920d-0589d77733de
 # ╠═77c4ea92-c52e-475c-9e5f-4c10d4b196ea
 # ╠═5810ebbc-1fdb-4ad6-953f-43e95b7aae26
-# ╠═7ae93f6b-b480-4a21-8a8c-9f8fcf6ac2bc
 # ╠═87afec01-6bef-47bb-aa1e-b00372c499f8
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
