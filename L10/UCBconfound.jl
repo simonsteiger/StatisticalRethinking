@@ -18,13 +18,16 @@ u = rand(Bernoulli(0.1), N) # High ability for 10% of students, others average
 
 # ╔═╡ 8051cb18-c761-47ff-ba83-1604d49c2cc4
 # G1 applies to D1, G2 to D2, but G1 with high ability also to D2
-D = Int64.(rand.(Bernoulli.([x == 1 ? Int64(x) : 0.75 for x in u]))) .+ 1
+begin
+	p_D = [G[i] == 1 ? Int64(u[i]) : 0.75 for i in 1:N]
+	D = Int64.(rand.(Bernoulli.(p_D))) .+ 1
+end
 
 # ╔═╡ 33b8ed27-3c45-4ac0-b841-15793da65218
 # Acceptance rates
 begin
 	p_u0 = [0.1 0.1; 0.1 0.3]
-	p_u1 = [0.3 0.3; 0.5 0.5]
+	p_u1 = [0.3 0.5; 0.3 0.5]
 	p_u = [p_u0, p_u1]
 end
 
@@ -34,18 +37,6 @@ begin
 	p = [p_u[1 + u[i]][D[i], G[i]] for i in 1:N]
 	A = rand.(Bernoulli.(p))
 end
-
-# ╔═╡ c76b66cd-ca17-44ed-8cf6-38466269dc02
-# ╠═╡ disabled = true
-#=╠═╡
-df_total = @chain begin
-	DataFrame([G, u, D, A], [:G, :u, :D, :A])
-	select([:G, :A], :A => (x -> x .== false) => :R)
-	groupby([:G])
-	combine([:A, :R] .=> sum .=> identity)
-	select(All(), [:A, :R] => ByRow((x, y) -> x + y) => :N)
-end
-  ╠═╡ =#
 
 # ╔═╡ 8032ace0-e7d5-4f6a-8e25-79cb654ef15a
 df = @chain begin
@@ -86,7 +77,7 @@ end
 	α ~ filldist(Normal(), nD, nG)
 
 	for i in eachindex(N)
-		p = α[G[i], D[i]]
+		p = α[D[i], G[i]]
 		A[i] ~ BinomialLogit(N[i], p)
 	end
 end
@@ -96,6 +87,48 @@ begin
 	chn_dir = quicksample(m_dir, df.G, df.D, df.A, df.N)
 	describe(chn_dir)
 end
+
+# ╔═╡ d1b1b0da-065f-4442-913c-ec60d6ce4907
+@model function m_sensA(G, D, N, β, u, A)
+	nD, nG = length.(unique.([D, G]))
+	α ~ filldist(Normal(), nD, nG)
+
+	for i in eachindex(N)
+		p = α[D[i], G[i]] + β[G[i]] * u[i]
+		A[i] ~ BinomialLogit(N[i], p)
+	end
+end
+
+# ╔═╡ aa060b2c-5a87-4528-ba06-be6d26392fb0
+begin
+	chn_sensA = quicksample(m_sensA, df.G, df.D, df.N, [1, 1], df.u, df.A)
+	describe(chn_sensA)
+end
+
+# ╔═╡ 2c05ce27-efd6-4dd4-9b23-7923037eb4bd
+@model function m_sensD(G, γ, u, D)
+	nG = length(unique(G))
+	δ ~ filldist(Normal(), nG)
+
+	for i in eachindex(G)
+		p = logistic(δ[G[i]] + γ[G[i]] * u[i])
+		D[i] ~ Bernoulli(p)
+	end
+end
+
+# ╔═╡ 3a8c92b2-1196-46f5-b11a-f7b3251ad4a8
+D2 = D .- 1
+
+# ╔═╡ 3065bfaa-5271-442a-8241-e70d461d5a6a
+begin
+	chn_sensD = quicksample(m_sensD, G, [1, 0], u, D2)
+	describe(chn_sensD)
+end
+
+# ╔═╡ 7d3b1b7f-cc01-4a1a-845d-5f4c56d14abe
+# Note that McElreath is doing full luxury Bayes, while we specify multiple models
+# How would we combine these two results into one? 
+# Probably have to check earlier lecture
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1416,12 +1449,17 @@ version = "17.4.0+0"
 # ╠═8051cb18-c761-47ff-ba83-1604d49c2cc4
 # ╠═33b8ed27-3c45-4ac0-b841-15793da65218
 # ╠═62c328b1-8eff-4225-bff9-d61c1c2c776d
-# ╠═c76b66cd-ca17-44ed-8cf6-38466269dc02
 # ╠═8032ace0-e7d5-4f6a-8e25-79cb654ef15a
 # ╠═e63a03e7-388e-4c02-b881-5da311aaf6a5
 # ╠═5618594d-45fd-4618-b578-8300e65051c1
 # ╠═33912ff8-bc49-438f-bece-30a794098edb
 # ╠═3e61eb58-29da-4dd6-ac36-2906428191cf
 # ╠═c8bbda0a-6ee8-4b82-a4a6-d63a731075c1
+# ╠═d1b1b0da-065f-4442-913c-ec60d6ce4907
+# ╠═aa060b2c-5a87-4528-ba06-be6d26392fb0
+# ╠═2c05ce27-efd6-4dd4-9b23-7923037eb4bd
+# ╠═3a8c92b2-1196-46f5-b11a-f7b3251ad4a8
+# ╠═3065bfaa-5271-442a-8241-e70d461d5a6a
+# ╠═7d3b1b7f-cc01-4a1a-845d-5f4c56d14abe
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
