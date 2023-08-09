@@ -6,7 +6,7 @@ using InteractiveUtils
 
 # ╔═╡ f3bf5042-3085-11ee-3a46-0bd038ee6c0a
 begin
-	using CSV, Turing, DataFrames, StatsPlots
+	using CSV, Turing, DataFrames, StatsPlots, Chain
 	import Downloads as DL
 end
 
@@ -21,7 +21,7 @@ kline.contact_num = [c == "high" ? 2 : 1 for c in kline.contact]
 
 # ╔═╡ 18b8f056-261f-4a32-916f-464264d2c0e3
 # Using priors centered at 0 is madness in exponential space
-begin
+let
 	N = 10_000
 	α = [rand(Normal(params...), N) for params in [(3, 0.5), (0, 1)]]
 	p = density(exp.(α[2]), xlims=(0, 100), label="Normal(0, 1)", color=1)
@@ -99,12 +99,67 @@ begin
 end
 
 # ╔═╡ 3eb5a962-ff07-4c99-b0be-6f384cfd02b7
-plot(chain)
+plot(chain2)
+
+# ╔═╡ 2099612b-7c8e-4a1f-a4b4-3e9b81cc6a37
+function do_C(C, α, β; N=100)
+	# Create population vector on log scale
+	log_P = collect(range(7, stop=12.5, length=N))
+	
+	# Simulate T values
+	T = map(1:N) do i
+		[exp.(α[C][j] + β[C][j] * log_P[i]) for j in eachindex(α[C])]
+	end
+
+	return T
+end
+
+# ╔═╡ 93df2bc6-c96b-47f2-8011-718fc663570f
+begin
+	params = select(DataFrame(chain2), r"α|β")
+	α_samples = [params[!, "α[1]"], params[!, "α[2]"]]
+	β_samples = [params[!, "β[1]"], params[!, "β[2]"]]
+end
+
+# ╔═╡ d5a963b5-c681-4cc2-925c-dd3de761f484
+begin
+	v1, v2 = [do_C(C, α_samples, β_samples) for C in [1, 2]]
+	mean_v1, mean_v2 = [mean.(v) for v in [v1, v2]]
+	lwr1, upr1 = [quantile.(v1, p) for p in [0.025, 0.975]]
+	lwr2, upr2 = [quantile.(v2, p) for p in [0.025, 0.975]]
+end
+
+# ╔═╡ 99778d9c-f6a6-404a-9267-329062b4729a
+begin
+	minmax = extrema(log.(kline.population))
+	pop_range = range(minmax[1], stop=minmax[2], length=100)
+	plot(pop_range, mean_v1, label="low", lw=1.5, color=1)
+	plot!(pop_range, lwr1, fillrange=upr1, fillalpha=0.2, fillcolor=1, alpha=0)
+	plot!(pop_range, lwr2, fillrange=upr2, fillalpha=0.2, fillcolor=2, alpha=0)
+	plot!(pop_range, mean_v2, label="high", lw=1.5, color=2)
+	scatter!(log.(kline.population), kline.total_tools, color=kline.contact_num)
+	xlabel!("log population")
+	ylabel!("tools invented")
+end
+
+# ╔═╡ f2be6192-8b81-4e4f-9fc3-9390ac11a061
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	p_range = range(minimum(kline.population), maximum(kline.population), length=100)
+	p = plot()
+	plot!(range(7, stop=12.5, length=100), do_C(1, mean_α, mean_β))
+	plot!(range(7, stop=12.5, length=100), do_C(2, mean_α, mean_β))
+	scatter!(log.(kline.population), kline.total_tools, color=kline.contact_num)
+end
+# almost like what McElreath made
+  ╠═╡ =#
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
@@ -112,6 +167,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
 CSV = "~0.10.11"
+Chain = "~0.5.0"
 DataFrames = "~1.6.1"
 StatsPlots = "~0.15.6"
 Turing = "~0.28.1"
@@ -123,7 +179,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "e4b259ab29599519414f9597c56c3d168d01c21c"
+project_hash = "f3e7578c7527d874cfeb5b7cdd8f38fde6171e33"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f5c25e8a5b29b5e941b7408bc8cc79fea4d9ef9a"
@@ -355,6 +411,11 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
 uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
+
+[[deps.Chain]]
+git-tree-sha1 = "8c4920235f6c561e401dfe569beb8b924adad003"
+uuid = "8be319e6-bccf-4806-a6f7-6fae938471bc"
+version = "0.5.0"
 
 [[deps.ChainRules]]
 deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "Statistics", "StructArrays"]
@@ -759,7 +820,7 @@ uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
 version = "0.72.9"
 
 [[deps.GR_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
+deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "FreeType2_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
 git-tree-sha1 = "f61f768bf090d97c532d24b64e07b237e9bb7b6b"
 uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
 version = "0.72.9+0"
@@ -2154,5 +2215,10 @@ version = "1.4.1+0"
 # ╠═e23eb05d-61d6-4ab9-9d0a-9d2fdc42b481
 # ╠═8c5de1b4-8e22-43f1-b8f0-9d3160fa6b42
 # ╠═3eb5a962-ff07-4c99-b0be-6f384cfd02b7
+# ╠═2099612b-7c8e-4a1f-a4b4-3e9b81cc6a37
+# ╠═93df2bc6-c96b-47f2-8011-718fc663570f
+# ╠═d5a963b5-c681-4cc2-925c-dd3de761f484
+# ╠═99778d9c-f6a6-404a-9267-329062b4729a
+# ╠═f2be6192-8b81-4e4f-9fc3-9390ac11a061
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
