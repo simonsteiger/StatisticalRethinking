@@ -141,19 +141,7 @@ begin
 	xlabel!("log population")
 	ylabel!("tools invented")
 end
-
-# ╔═╡ f2be6192-8b81-4e4f-9fc3-9390ac11a061
-# ╠═╡ disabled = true
-#=╠═╡
-begin
-	p_range = range(minimum(kline.population), maximum(kline.population), length=100)
-	p = plot()
-	plot!(range(7, stop=12.5, length=100), do_C(1, mean_α, mean_β))
-	plot!(range(7, stop=12.5, length=100), do_C(2, mean_α, mean_β))
-	scatter!(log.(kline.population), kline.total_tools, color=kline.contact_num)
-end
-# almost like what McElreath made
-  ╠═╡ =#
+# could still convert this into natural space from log space
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2219,6 +2207,5 @@ version = "1.4.1+0"
 # ╠═93df2bc6-c96b-47f2-8011-718fc663570f
 # ╠═d5a963b5-c681-4cc2-925c-dd3de761f484
 # ╠═99778d9c-f6a6-404a-9267-329062b4729a
-# ╠═f2be6192-8b81-4e4f-9fc3-9390ac11a061
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
