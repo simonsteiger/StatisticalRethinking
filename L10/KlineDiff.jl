@@ -14,22 +14,42 @@ end
 begin
 	remote = "https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/"
 	kline = CSV.read(DL.download(string(remote, "Kline.csv")), DataFrame)
+	kline.contact_num = [x == "low" ? 1 : 2 for x in kline.contact]
 end
 
 # ╔═╡ 4770bfdd-5300-4a41-a3ef-1edc51b17926
 function sim(α, β, γ, P, Tₘ)
-	T = fill(0.0, Tₘ)
+	T = zeros(Tₘ)
 	[T[i] = T[i-1] + α * P^β - γ * T[i-1] for i in 2:Tₘ]
 	return T
 end
-
-# ╔═╡ 6ffe3c6d-7a3f-42d9-8abe-cf1acfa118bb
-length(zeros(50))
 
 # ╔═╡ 719405c4-b115-415f-8f3d-b16b6e49d2ff
 let α = 0.02, β = 0.5, γ = 0.2, Tₘ = 50
 	plot(sim(α, β, γ, 1e4, Tₘ), lw = 1.5, label="P=10000")
 	plot!(sim(α, β, γ, 1e3, Tₘ), lw = 1.5, label = "P=1000")
+end
+
+# ╔═╡ 77f5f434-a23a-4f6a-b286-c1e21b286ed9
+@model function diffmodel(C, P, T)
+	n = length(C)
+	nC = length(unique(C))
+	γ ~ Exponential(1)
+	α ~ filldist(Normal(1, 1), nC)
+	β ~ filldist(Exponential(1), nC)
+
+	for i in 1:n
+		λ = exp(α[C[i]]) * P[i]^β[C[i]] / γ
+		T[i] ~ Poisson(λ)
+	end
+end
+# Parameters must be positive, Exponential is one way, other positive priors another
+
+# ╔═╡ 6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
+begin
+	m = diffmodel(kline.contact_num, kline.population, kline.total_tools)
+	chn = sample(m, NUTS(), MCMCThreads(), 1000, 3)
+	describe(chn)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2083,7 +2103,8 @@ version = "1.4.1+0"
 # ╠═03a95687-252e-4682-9dcc-61b03313f3e0
 # ╠═6d15a5f4-39e6-11ee-0303-15226a72fe70
 # ╠═4770bfdd-5300-4a41-a3ef-1edc51b17926
-# ╠═6ffe3c6d-7a3f-42d9-8abe-cf1acfa118bb
 # ╠═719405c4-b115-415f-8f3d-b16b6e49d2ff
+# ╠═77f5f434-a23a-4f6a-b286-c1e21b286ed9
+# ╠═6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
