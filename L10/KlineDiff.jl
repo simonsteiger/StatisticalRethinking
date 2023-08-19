@@ -17,6 +17,9 @@ begin
 	kline.contact_num = [x == "low" ? 1 : 2 for x in kline.contact]
 end
 
+# ╔═╡ ba8d6e86-2ff7-4dc0-bba6-0536551fe4f2
+const PSEQ = 1:10:maximum(kline.population)
+
 # ╔═╡ 4770bfdd-5300-4a41-a3ef-1edc51b17926
 function sim(α, β, γ, P, Tₘ)
 	T = zeros(Tₘ)
@@ -24,32 +27,71 @@ function sim(α, β, γ, P, Tₘ)
 	return T
 end
 
-# ╔═╡ 719405c4-b115-415f-8f3d-b16b6e49d2ff
-let α = 0.02, β = 0.5, γ = 0.2, Tₘ = 50
-	plot(sim(α, β, γ, 1e4, Tₘ), lw = 1.5, label="P=10000")
-	plot!(sim(α, β, γ, 1e3, Tₘ), lw = 1.5, label = "P=1000")
-end
-
 # ╔═╡ 77f5f434-a23a-4f6a-b286-c1e21b286ed9
 @model function diffmodel(C, P, T)
 	n = length(C)
 	nC = length(unique(C))
 	γ ~ Exponential(1)
-	α ~ filldist(Normal(1, 1), nC)
+	α ~ filldist(Exponential(1), nC)
 	β ~ filldist(Exponential(1), nC)
 
 	for i in 1:n
-		λ = exp(α[C[i]]) * P[i]^β[C[i]] / γ
+		λ = α[C[i]] * P[i]^β[C[i]] / γ
 		T[i] ~ Poisson(λ)
 	end
 end
-# Parameters must be positive, Exponential is one way, other positive priors another
+# Parameters must be positive, exp(α) is one way, positive priors (β) another
 
 # ╔═╡ 6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
 begin
 	m = diffmodel(kline.contact_num, kline.population, kline.total_tools)
 	chn = sample(m, NUTS(), MCMCThreads(), 1000, 3)
 	describe(chn)
+end
+
+# ╔═╡ e8c1898b-8143-4584-8a1b-0d3f2e054d3d
+sim(α, β, γ, P) = α * P^β / γ
+
+# ╔═╡ 719405c4-b115-415f-8f3d-b16b6e49d2ff
+let α = 0.02, β = 0.5, γ = 0.2, Tₘ = 50
+	plot(sim(α, β, γ, 1e4, Tₘ), lw = 1.5, label="P=10000")
+	plot!(sim(α, β, γ, 1e3, Tₘ), lw = 1.5, label = "P=1000")
+end
+
+# ╔═╡ 4effa1c7-ea82-4d33-aea2-5d6009ddeec8
+begin
+	res = map(1:2) do C
+		αC = reduce(hcat, chn["α[$C]"])
+		βC = reduce(hcat, chn["β[$C]"])
+		γ = reduce(hcat, chn["γ"])
+		[sim(αC[j], βC[j], γ[j], i) for i in PSEQ, j in eachindex(αC)]
+	end
+end
+# Calculate mean and quantiles
+# Any way to get a sequence with log step size?
+
+# ╔═╡ 2bad2681-0c37-4f54-8505-6082b3ad78cb
+# get quantile per contact group and population value
+q₁, q₂ = 
+	map(1:2) do C
+		[quantile(i, p) for i in eachslice(res[C], dims=1), p in [0.025, 0.975]]
+	end
+
+# ╔═╡ 8b7c1883-e262-448d-93c9-f74a26178caf
+μ₁, μ₂ = 
+	map(1:2) do C
+		[mean(i) for i in eachslice(res[C], dims=1)]
+	end
+
+# ╔═╡ d2b215c8-0fed-4f93-b173-3f96b8d6ae62
+let df = kline
+	plot(PSEQ, [μ₁, μ₂], lw=1.5, label=["Low contact" "High contact"])
+	plot!(PSEQ, q₁[:, 1], fillrange=q₁[:, 2], fillalpha=0.2, alpha=0, color=1, label=false)
+	plot!(PSEQ, q₂[:, 1], fillrange=q₂[:, 2], fillalpha=0.2, alpha=0, color=2, label=false)
+	scatter!(df.population, df.total_tools, color=df.contact_num, label=false)
+	ylims!(0, 100)
+	xlabel!("Population")
+	ylabel!("Tools invented")
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2102,9 +2144,15 @@ version = "1.4.1+0"
 # ╔═╡ Cell order:
 # ╠═03a95687-252e-4682-9dcc-61b03313f3e0
 # ╠═6d15a5f4-39e6-11ee-0303-15226a72fe70
+# ╠═ba8d6e86-2ff7-4dc0-bba6-0536551fe4f2
 # ╠═4770bfdd-5300-4a41-a3ef-1edc51b17926
 # ╠═719405c4-b115-415f-8f3d-b16b6e49d2ff
 # ╠═77f5f434-a23a-4f6a-b286-c1e21b286ed9
 # ╠═6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
+# ╠═e8c1898b-8143-4584-8a1b-0d3f2e054d3d
+# ╠═4effa1c7-ea82-4d33-aea2-5d6009ddeec8
+# ╠═2bad2681-0c37-4f54-8505-6082b3ad78cb
+# ╠═8b7c1883-e262-448d-93c9-f74a26178caf
+# ╠═d2b215c8-0fed-4f93-b173-3f96b8d6ae62
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
