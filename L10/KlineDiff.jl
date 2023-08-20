@@ -42,11 +42,35 @@ end
 end
 # Parameters must be positive, exp(α) is one way, positive priors (β) another
 
-# ╔═╡ 6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
+# ╔═╡ 40e29497-16ff-48c5-8a87-cb718c3bb8e0
+# Not as sensitive to Hawaii's high population, but has very wide quantiles
+@model function negbinmodel(C, P, T)
+	n = length(C)
+	nC = length(unique(C))
+	γ ~ Exponential(1)
+	α ~ filldist(Exponential(1), nC)
+	β ~ filldist(Exponential(1), nC)
+	p ~ Beta(2, 2)
+
+	for i in 1:n
+		λ = α[C[i]] * P[i]^β[C[i]] / γ
+		T[i] ~ NegativeBinomial(λ > 0 ? λ : 1, p)
+	end
+end
+
+# ╔═╡ 691c0aa4-adc4-4d11-be21-8797a6fae78d
 begin
 	m = diffmodel(kline.contact_num, kline.population, kline.total_tools)
 	chn = sample(m, NUTS(), MCMCThreads(), 1000, 3)
 	describe(chn)
+end
+
+
+# ╔═╡ 6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
+begin
+	m_nb = negbinmodel(kline.contact_num, kline.population, kline.total_tools)
+	chn_nb = sample(m_nb, NUTS(), MCMCThreads(), 1000, 3)
+	describe(chn_nb)
 end
 
 # ╔═╡ e8c1898b-8143-4584-8a1b-0d3f2e054d3d
@@ -67,8 +91,6 @@ begin
 		[sim(αC[j], βC[j], γ[j], i) for i in PSEQ, j in eachindex(αC)]
 	end
 end
-# Calculate mean and quantiles
-# Any way to get a sequence with log step size?
 
 # ╔═╡ 2bad2681-0c37-4f54-8505-6082b3ad78cb
 # get quantile per contact group and population value
@@ -93,6 +115,9 @@ let df = kline
 	xlabel!("Population")
 	ylabel!("Tools invented")
 end
+
+# ╔═╡ 292e7eef-70a7-4c4b-abd7-2655a86bcfc0
+rand(NegativeBinomial(0.1, 0.1), 100)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2148,11 +2173,14 @@ version = "1.4.1+0"
 # ╠═4770bfdd-5300-4a41-a3ef-1edc51b17926
 # ╠═719405c4-b115-415f-8f3d-b16b6e49d2ff
 # ╠═77f5f434-a23a-4f6a-b286-c1e21b286ed9
+# ╠═40e29497-16ff-48c5-8a87-cb718c3bb8e0
+# ╠═691c0aa4-adc4-4d11-be21-8797a6fae78d
 # ╠═6618b2f0-6b9a-4092-8b6f-4ed5d43ea827
 # ╠═e8c1898b-8143-4584-8a1b-0d3f2e054d3d
 # ╠═4effa1c7-ea82-4d33-aea2-5d6009ddeec8
 # ╠═2bad2681-0c37-4f54-8505-6082b3ad78cb
 # ╠═8b7c1883-e262-448d-93c9-f74a26178caf
 # ╠═d2b215c8-0fed-4f93-b173-3f96b8d6ae62
+# ╠═292e7eef-70a7-4c4b-abd7-2655a86bcfc0
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

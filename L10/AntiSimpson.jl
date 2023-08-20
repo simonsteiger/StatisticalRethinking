@@ -75,6 +75,37 @@ resXZ =
 plot(resXZ, color=[fill(1, 41) fill(2, 41)], alpha=0.03, label=false)
 # why is it striped? 🥲
 
+# ╔═╡ 76868432-5e46-415b-b8cf-951c7298e960
+density([c2["β[$i]"] for i in 1:2], lw=1.5, label=["β[1]" "β[2]"])
+
+# ╔═╡ 6810246b-961f-4712-a365-0ebd2293840f
+@model function mXZ2(X, Z, Y)
+	nZ = length(unique(Z))
+	α ~ filldist(Normal(), nZ)
+	β ~ filldist(Normal(), nZ)
+
+	for i in eachindex(X)
+		v = logistic(α[Z[i]+1] + β[Z[i]+1] * X[i])
+		Y[i] ~ Bernoulli(v)
+	end
+end
+
+# ╔═╡ fa8f4c7f-f868-4635-9c89-7e1654955008
+c3 = sample(mXZ2(X, Z, Y), NUTS(), 1000)
+
+# ╔═╡ 6ad560b4-d40c-4132-80d5-626b7631ec5d
+resXZ2 = 
+	map(eachindex(c3["α[1]"])) do i
+		[pred(c3["α[$Z]"][i], c3["β[$Z]"][i], X) for X in Xrange, Z in 1:2]
+	end
+
+# ╔═╡ 27476920-c445-46a4-8312-c1636deaa85b
+plot(resXZ2, color=[fill(1, 41) fill(2, 41)], alpha=0.03, label=false)
+# why is it striped? 🥲
+
+# ╔═╡ 27b999d6-f76f-457a-8f70-d9851bbd240d
+density([c3["β[$i]"] for i in 1:2], lw=1.5, label=["β[1]" "β[2]"])
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -2085,5 +2116,11 @@ version = "1.4.1+0"
 # ╠═eaab8f8f-4e5b-4325-9094-b678da6529b8
 # ╠═59f3a6a6-bba7-4466-843d-a400e592d1c9
 # ╠═faaf97d5-747b-4f00-9967-6689b7a86f6a
+# ╠═76868432-5e46-415b-b8cf-951c7298e960
+# ╠═6810246b-961f-4712-a365-0ebd2293840f
+# ╠═fa8f4c7f-f868-4635-9c89-7e1654955008
+# ╠═6ad560b4-d40c-4132-80d5-626b7631ec5d
+# ╠═27476920-c445-46a4-8312-c1636deaa85b
+# ╠═27b999d6-f76f-457a-8f70-d9851bbd240d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

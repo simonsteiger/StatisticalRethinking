@@ -103,7 +103,7 @@ end
 
 # ╔═╡ d6cfaa18-6575-4d4f-a542-151fe88ee435
 let df = DataFrame(describe(chn_QO)[1])
-	vline([0], color="grey80")
+	vline([0], color="grey80", label=false)
 	scatter!(df.mean, string.(df.parameters), xerror=df.std, label="mean", color=1)
 	yticks!([3:1:length(string.(df.parameters))+3;], string.(df.parameters))
 end
