@@ -18,7 +18,7 @@ end
 # ╔═╡ c5433fa0-2eb0-4d94-aeb2-d723ab61e9cd
 begin
 	remote = "https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/"
-	wines = CSV.read(DL.download(string(remote, "Wines2012.csv")), DataFrame)
+	wines = CSV.read(DL.download(remote * "Wines2012.csv"), DataFrame)
 end
 
 # ╔═╡ 8e23934d-37c6-4fca-96f0-02f41ffe434c
@@ -30,8 +30,9 @@ end
 
 # ╔═╡ c57e628b-e447-413f-bd6b-05108cf96294
 # Helper for Z transformation
-function Ztrans(x::Vector{Float64}) 
-	ifelse.(ismissing(x), missing, (x .- mean(skipmissing(x))) ./ std(skipmissing(x)))
+function Ztrans(v::Vector{Float64})
+	x̄, σ = mean(skipmissing(v)), std(skipmissing(v))
+	[ismissing(x) ? missing : (x - x̄) / σ for x in v]
 end
 
 # ╔═╡ afa4cfff-802c-4695-9616-cb3fde4670bb
