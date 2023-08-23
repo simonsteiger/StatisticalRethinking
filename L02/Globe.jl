@@ -5,7 +5,7 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ 43ddb57a-4114-11ee-199d-e30bd9151b32
-using StatsBase, StatsPlots, Distributions, Random
+using StatsBase, StatsPlots, Distributions, Random, DataFrames
 
 # ╔═╡ fe5cde5b-afb1-4d3f-8742-c845ea3b704e
 Random.seed!(42)
@@ -56,7 +56,7 @@ function updatebelief(x, y)
 end
 
 # ╔═╡ 0b9b6747-65be-4c36-939b-eef74ad2dba9
-N = 100
+N = 300
 
 # ╔═╡ fdf15de9-9b71-4539-b92c-85a7c97d6494
 p = 0.7
@@ -71,21 +71,77 @@ updatebelief(tosses, y)
 let x = tosses
 	@gif for i in eachindex(x)
 		plot(y, updatebelief(x[1:i], y), fillrange=0, fillalpha=0.2, color=1)
-		vline!([0.7], color=2, lw=1.5)
+		vline!([0.7], color=2, lw=1.5, legend=:none)
 		title!("Iteration $i\nResult $(x[i])")
-		ylims!(0, 1)
-	end every 1
+		ylims!(0, 0.6)
+	end every 5
 end
+
+# ╔═╡ 91658fdf-dbe9-41e5-ba97-0ed983c07f86
+B = Beta(7, 4)
+
+# ╔═╡ ee21714f-f55e-4997-a7b3-cd7b9e151a83
+draws = round.(rand(B, 1000); digits=2)
+
+# ╔═╡ da2df859-ebe4-4319-a942-c5bbbfefb2ec
+begin
+	histogram(draws, bins=0:0.01:1, normalize=true)
+	plot!(B, linewidth=4, color=:white, legend=:none)
+	plot!(B, linewidth=1.5, color=2, legend=:none)
+end
+
+# ╔═╡ a7201339-35f9-49e6-8021-ed1737d90b06
+pred_posterior = map(x -> sum(sim(x, 10) .== "W"), draws)
+
+# ╔═╡ f9600949-6f22-409f-aecb-b7a74866d112
+frequencies = zeros(length(unique(pred_posterior)))
+
+# ╔═╡ c6ac6674-1fb6-4f9c-a96d-ddeadd523ede
+begin 
+	vals = unique(pred_posterior)
+	for i in 1:length(vals)
+		frequencies[i] = count(vals[i], pred_posterior)
+	end
+	ftable = DataFrame([vals, frequencies], [:value, :frequency])
+	sort!(ftable, :value)
+end
+
+# ╔═╡ 98136856-8210-440a-8ad6-02618a3a6429
+let df = ftable
+	posterior = df.frequency / sum(df.frequency)
+	plot(df.value, posterior, lw=1.5, fillrange=0, fillalpha=0.2, legend=false)
+end
+
+# ╔═╡ 7f28e0e8-26ae-4621-a7d4-fd7e5a21d087
+# BONUS ROUND
+# Code 2.29 Misclassification simulation
+function sim_globe2(p, N, threshold; out=:obs)
+    true_sample = sample(["W", "L"], Weights([p, 1 - p]), N; replace=true)
+    
+    # Wrap values in DataFrame for iteration below
+    df = DataFrame(:tru => true_sample, :rng => rand(Uniform(0, 1), N), :obs => Vector{String}(undef, N))
+    
+    # Iterate rows of df and swap true value if rng < threshold
+    for i in 1:nrow(df)
+        df[i, :obs] = df[i, :rng] < threshold ? ifelse(df[i, :tru] == "W", "L", "W") : df[i, :tru]
+    end
+
+    # Allow user to output entire df to check if misclassification worked
+    return out == "all" ? df : df[!, out]
+end
+
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
 [compat]
+DataFrames = "~1.6.1"
 Distributions = "~0.25.100"
 StatsBase = "~0.34.0"
 StatsPlots = "~0.15.6"
@@ -97,7 +153,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "fe662781441f018933c7c806d1c6f54a58c03b9a"
+project_hash = "08e9e81a277b2989c6bc7ad2910babe3fe157641"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -243,10 +299,21 @@ git-tree-sha1 = "d05d9e7b7aedff4e5b51a029dced05cfb6125781"
 uuid = "d38c429a-6771-53c6-b99e-75d170b6e991"
 version = "0.6.2"
 
+[[deps.Crayons]]
+git-tree-sha1 = "249fe38abf76d48563e2f4556bebd215aa317e15"
+uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
+version = "4.1.1"
+
 [[deps.DataAPI]]
 git-tree-sha1 = "8da84edb865b0b5b0100c0666a9bc9a0b71c553c"
 uuid = "9a962f9c-6df0-11e9-0e5d-c546b8b5ee8a"
 version = "1.15.0"
+
+[[deps.DataFrames]]
+deps = ["Compat", "DataAPI", "DataStructures", "Future", "InlineStrings", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrecompileTools", "PrettyTables", "Printf", "REPL", "Random", "Reexport", "SentinelArrays", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
+git-tree-sha1 = "04c738083f29f86e62c8afc341f0967d8717bdb8"
+uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+version = "1.6.1"
 
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
@@ -389,6 +456,10 @@ git-tree-sha1 = "aa31987c2ba8704e23c6c8ba8a4f769d5d7e4f91"
 uuid = "559328eb-81f9-559d-9380-de523a88c83c"
 version = "1.0.10+0"
 
+[[deps.Future]]
+deps = ["Random"]
+uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
+
 [[deps.GLFW_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libglvnd_jll", "Pkg", "Xorg_libXcursor_jll", "Xorg_libXi_jll", "Xorg_libXinerama_jll", "Xorg_libXrandr_jll"]
 git-tree-sha1 = "d972031d28c8c8d9d7b41a536ad7bb0c2579caca"
@@ -448,6 +519,12 @@ git-tree-sha1 = "f218fe3736ddf977e0e772bc9a586b2383da2685"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.23"
 
+[[deps.InlineStrings]]
+deps = ["Parsers"]
+git-tree-sha1 = "9cc2baf75c6d09f9da536ddf58eb2f29dedaf461"
+uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
+version = "1.4.0"
+
 [[deps.IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "ad37c091f7d7daf900963171600d7c1c5c3ede32"
@@ -463,6 +540,11 @@ deps = ["Adapt", "AxisAlgorithms", "ChainRulesCore", "LinearAlgebra", "OffsetArr
 git-tree-sha1 = "721ec2cf720536ad005cb38f50dbba7b02419a15"
 uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 version = "0.14.7"
+
+[[deps.InvertedIndices]]
+git-tree-sha1 = "0dc7b50b8d436461be01300fd8cd45aa0274b038"
+uuid = "41ab1584-1d38-5bbf-9106-f11c6c58b48f"
+version = "1.3.0"
 
 [[deps.IrrationalConstants]]
 git-tree-sha1 = "630b497eafcc20001bba38a4651b327dcfc491d2"
@@ -838,6 +920,12 @@ version = "1.38.17"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
+[[deps.PooledArrays]]
+deps = ["DataAPI", "Future"]
+git-tree-sha1 = "a6062fe4063cdafe78f4a0a81cfffb89721b30e7"
+uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
+version = "1.4.2"
+
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
 git-tree-sha1 = "9673d39decc5feece56ef3940e5dafba15ba0f81"
@@ -849,6 +937,12 @@ deps = ["TOML"]
 git-tree-sha1 = "7eb1686b4f04b82f96ed7a4ea5890a4f0c7a09f1"
 uuid = "21216c6a-2e73-6563-6e65-726566657250"
 version = "1.4.0"
+
+[[deps.PrettyTables]]
+deps = ["Crayons", "LaTeXStrings", "Markdown", "Printf", "Reexport", "StringManipulation", "Tables"]
+git-tree-sha1 = "ee094908d720185ddbdc58dbe0c1cbe35453ec7a"
+uuid = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
+version = "2.2.7"
 
 [[deps.Printf]]
 deps = ["Unicode"]
@@ -1033,6 +1127,11 @@ deps = ["AbstractFFTs", "Clustering", "DataStructures", "Distributions", "Interp
 git-tree-sha1 = "9115a29e6c2cf66cf213ccc17ffd61e27e743b24"
 uuid = "f3b207a7-027a-5e70-b257-86293d7955fd"
 version = "0.15.6"
+
+[[deps.StringManipulation]]
+git-tree-sha1 = "46da2434b41f41ac3594ee9816ce5541c6096123"
+uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
+version = "0.3.0"
 
 [[deps.SuiteSparse]]
 deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
@@ -1400,5 +1499,13 @@ version = "1.4.1+0"
 # ╠═394b8deb-a3fb-4e29-93f8-e5c556c72114
 # ╠═fdaa2aa4-ce24-4b4f-951a-00f2e27aea1f
 # ╠═1094e49a-e651-4ec9-8695-ae083578ca48
+# ╠═91658fdf-dbe9-41e5-ba97-0ed983c07f86
+# ╠═ee21714f-f55e-4997-a7b3-cd7b9e151a83
+# ╠═da2df859-ebe4-4319-a942-c5bbbfefb2ec
+# ╠═a7201339-35f9-49e6-8021-ed1737d90b06
+# ╠═f9600949-6f22-409f-aecb-b7a74866d112
+# ╠═c6ac6674-1fb6-4f9c-a96d-ddeadd523ede
+# ╠═98136856-8210-440a-8ad6-02618a3a6429
+# ╠═7f28e0e8-26ae-4621-a7d4-fd7e5a21d087
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
