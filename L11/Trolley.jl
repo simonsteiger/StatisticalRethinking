@@ -39,6 +39,26 @@ begin
 	# We'll be working with the cumulative log odds of the categorical values
 end
 
+# ╔═╡ 922a0d9d-b12f-4892-9033-f29dc4c13108
+@model function m_trolley(A, C, I, R)
+	nR = length(unique(R))
+	α ~ filldist(Normal(0, 1), nR)
+	β₁ ~ Normal(0, 0.5)
+	β₂ ~ Normal(0, 0.5)
+	β₃ ~ Normal(0, 0.5)
+
+	for i in eachindex(R)
+		ϕ = β₁ * A[i] + β₂ * C[i] + β₃ * I[i]
+		R[i] ~ OrderedLogistic(ϕ, α) # what is alpha? observed cutpoints?
+	end
+end
+
+# ╔═╡ 89a01d6d-0ad5-41ab-888e-d13705361370
+begin
+	m = m_trolley(trolley.action, trolley.contact, trolley.intention, trolley.response)
+	chn = sample(m, NUTS(), MCMCThreads(), 1000, 3)
+end
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -2087,5 +2107,7 @@ version = "1.4.1+0"
 # ╠═54a67deb-7836-4599-8b15-90d02202e421
 # ╠═2a8976c0-024b-4109-aa6e-06cceec25e58
 # ╠═c564431b-77c6-4f3e-8269-5c12e2d0de8d
+# ╠═922a0d9d-b12f-4892-9033-f29dc4c13108
+# ╠═89a01d6d-0ad5-41ab-888e-d13705361370
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

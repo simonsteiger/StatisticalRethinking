@@ -38,7 +38,7 @@ end
 	α ~ filldist(Normal(), n)
 	μ = logistic.(α[color_id])
 	λ = 1 ./ μ
-	for i in 1:length(days)
+	for i in eachindex(days)
 		if adopted == 1
 			days[i] ~ Exponential(λ[i])
 		else

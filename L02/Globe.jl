@@ -110,6 +110,7 @@ end
 let df = ftable
 	posterior = df.frequency / sum(df.frequency)
 	plot(df.value, posterior, lw=1.5, fillrange=0, fillalpha=0.2, legend=false)
+	title!("posterior probability")
 end
 
 # ╔═╡ 7f28e0e8-26ae-4621-a7d4-fd7e5a21d087
