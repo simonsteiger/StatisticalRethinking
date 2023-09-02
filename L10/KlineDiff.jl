@@ -54,7 +54,11 @@ end
 
 	for i in 1:n
 		λ = α[C[i]] * P[i]^β[C[i]] / γ
-		T[i] ~ NegativeBinomial(λ > 0 ? λ : 1, p)
+        if λ > 0
+            T[i] ~ NegativeBinomial(λ, p)
+        else
+            T[i] = 0
+        end
 	end
 end
 
