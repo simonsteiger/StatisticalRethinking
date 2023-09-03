@@ -74,8 +74,53 @@ let chn = chain_io, df = reedfrogs
 	
 	scatter(df.propsurv, color="black", label="observed")
 	scatter!(μ, yerr=(Q[1], Q[2]), color="red", marker=(:d), label="estimated")
-	
 end
+
+# ╔═╡ 7c152e3e-2968-4dae-a178-bc3774fe62b2
+@model function strat_P(S, P, D)
+	# Number of intercepts
+	n_intercepts = length(D)
+
+	# Hyperprior mean
+	ᾱ ~ Normal(0, 1.5)
+
+	# Hyperprior variance
+	σ ~ Exponential(1)
+
+	# Prior for random intercepts
+	α ~ filldist(Normal(ᾱ, σ), n_intercepts)
+
+	# Prior for coefficient
+	β ~ Normal(0, 0.5)
+	
+	# Loop over rows and predict survival for each tank
+	for i in eachindex(D)
+		p = logistic(α[i] + β * P[i])
+		S[i] ~ Binomial(D[i], p)
+	end
+end
+
+# ╔═╡ b62eead6-0197-454c-804e-5fb35b370b88
+begin
+	P = [i == "no" ? 0 : 1 for i in reedfrogs.pred]
+	mp = strat_P(reedfrogs.surv, P, reedfrogs.density)
+	chain_p = sample(mp, NUTS(), MCMCThreads(), 1000, 3)
+	describe(chain_p)
+end
+
+# ╔═╡ a4905cc5-ef2d-4ac7-b067-1b6542eb6a52
+begin
+	density(DataFrame(chain_p)[:, :β], label=false, lw=1.5)
+	xlabel!("effect of predators"); ylabel!("density")
+end
+
+# ╔═╡ c7c0d1a7-1ce9-470e-b72d-eb7cfab19c4f
+# Predictions are very similar to the previous model, but...
+begin
+	density(DataFrame(chain_io)[:, :σ], lw=1.5, label="intercept only")
+	density!(DataFrame(chain_p)[:, :σ], lw=1.5, label="fixed effect P")
+end
+# We attribute a lot of presence of predators, which reduces the random error σ
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2152,5 +2197,9 @@ version = "1.4.1+0"
 # ╠═452306bc-bdde-4c39-ad14-13ca494a2e1c
 # ╠═070abfde-5f91-4ff8-b898-de7a7f7234bd
 # ╠═39874a37-74fb-4b2a-878b-c381d8c6d578
+# ╠═7c152e3e-2968-4dae-a178-bc3774fe62b2
+# ╠═b62eead6-0197-454c-804e-5fb35b370b88
+# ╠═a4905cc5-ef2d-4ac7-b067-1b6542eb6a52
+# ╠═c7c0d1a7-1ce9-470e-b72d-eb7cfab19c4f
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
