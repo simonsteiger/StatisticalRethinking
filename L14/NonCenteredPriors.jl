@@ -4,206 +4,67 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ 317e34d4-4c10-11ee-1d1b-35420748802d
-using Turing, StatsPlots, StatsFuns, DataFrames
+# ╔═╡ bb38b9b0-54b2-11ee-2bf3-45cae1583677
+using Turing, StatsPlots
 
-# ╔═╡ 80fe86fb-d7e4-46f6-baac-29fbc6038e9f
-K = 30
-
-# ╔═╡ d69715f9-b618-411a-82e0-179f8dc6317a
-N_id = 600
-
-# ╔═╡ 312f63d2-ab2e-4ad3-bf81-6711dd0c5451
-α0 = -2
-
-# ╔═╡ c840c8eb-938e-4e4c-848c-64876023e676
-βZY = -0.5
-
-# ╔═╡ 48bea5f5-f57d-49ac-902e-9037280265cc
-βXY = 0.5
-
-# ╔═╡ b674270e-ba25-47cd-a364-8f5f10476662
-g = rand(Categorical(fill(1/K, K)), N_id)
-
-# ╔═╡ b836b649-81cd-41a4-b51d-595ea087e704
-Ug = rand(Normal(1.5, 1), K)
-
-# ╔═╡ a2ea64a1-6571-4e7e-a15f-ddbd9f858f43
-X = rand.(Normal.(Ug[g], 1))
-
-# ╔═╡ 17ce5176-8f8b-4241-a323-f6cc1eaad1ed
-Z = rand(Normal(), K)
-
-# ╔═╡ 4a213f17-2bde-4fd5-bb32-4d553c090988
-p = logistic.(α0 .+ βXY * X + Ug[g] + βZY * Z[g])
-
-# ╔═╡ aeb31813-73ee-486b-9d7a-567cc40ebfa2
-Y = rand.(Bernoulli.(p))
-
-# ╔═╡ 82a9eb4d-1ed9-405c-b8d3-e3d308c39066
-# A fixed effect model can deconfound because it fits Ug as part of α0
-@model function fixed_effects(X, Z, G, Y)
-	α ~ filldist(Normal(0, 10), length(G))
-	βX ~ Normal()
-	βZ ~ Normal()
-
-	for i in eachindex(X)
-		p = logistic(α[G[i]] + βX * X[i] + βZ * Z[G[i]])
-		Y[i] ~ Bernoulli(p)
-	end
+# ╔═╡ ff7ed9f5-db2b-42a1-ae28-958f212458d0
+@model function devil()
+	v ~ Normal(0, 3)
+	x ~ Normal(0, exp(v))
 end
 
-# ╔═╡ 764d9b19-0b10-4e09-87b5-572692affba7
+# ╔═╡ 34f97b80-9863-4ac8-b460-25da9a0f6dcf
+chain = sample(devil(), Prior(), 1000)
+
+# ╔═╡ e6c8e37b-2387-4172-84b4-01846d8ee4e2
+describe(chain) # there seems to be no divergent transitions issue at all?
+# Does this not happen when we sample from priors?
+
+# ╔═╡ 879b36ff-2cfc-4fa2-ad54-26374779ae91
+@model function noncentered()
+	v ~ Normal(0, 3)
+	z ~ Normal(0, 1)
+	x_ = z * exp(v)
+end
+
+# ╔═╡ 576433ac-c58d-4e2a-85f5-59f237cc979b
 begin
-	fixed_effects_model = fixed_effects(X, Z, g, Y)
-	chain_fixed = sample(fixed_effects_model, NUTS(0.65), MCMCThreads(), 1000, 3)
-	describe(chain_fixed)
+	chain_nc = sample(noncentered(), Prior(), 1000)
+	describe(chain_nc)
 end
 
-# ╔═╡ 52675a54-07ee-47c5-920c-b0894526bed6
-# Naive, confounded model
-@model function naive(X, Z, G, Y)
-	α ~ Normal(0, 10)
-	βX ~ Normal()
-	βZ ~ Normal()
+# ╔═╡ dc1e3f7c-3b4f-4a62-8fea-f476d2001762
+x_ = generated_quantities(noncentered(), chain_nc)
 
-	for i in eachindex(X)
-		p = logistic(α + βX * X[i] + βZ * Z[G[i]])
-		Y[i] ~ Bernoulli(p)
-	end
-end
+# ╔═╡ 295b0daa-002f-47d7-a6cb-81810061d3b8
+(median=median(x_), mean=mean(x_))
 
-# ╔═╡ a52b49f2-8a22-4cd4-807d-4e2fc0a27854
-begin
-	naive_model = naive(X, Z, g, Y)
-	chain_naive = sample(naive_model, NUTS(0.65), MCMCThreads(), 1000, 3)
-	describe(chain_naive)
-end
+# Median seems to get us to a better place than mean?
 
-# ╔═╡ 1ec2cba9-e45e-433b-9772-46bf0dce6f47
-# Partial pooling is expected to give a worse estimate for X, but a better one for G
-@model function partial_pool(X, Z, G, Y)
-	ᾱ ~ Normal()
-	τ ~ Exponential(1)
-	α ~ filldist(Normal(ᾱ, τ), length(G))
-	βX ~ Normal()
-	βZ ~ Normal()
+# ╔═╡ b14f7631-c3b8-4ae8-842f-133a09ca810c
+plot(chain) # this looks good actually
 
-	for i in eachindex(X)
-		p = logistic(α[G[i]] + βX * X[i] + βZ * Z[G[i]])
-		Y[i] ~ Bernoulli(p)
-	end
-end
-# Maybe this model is lacking the non-centered prios technique McElreath mentions!
-
-# ╔═╡ f02072ec-1fdf-4053-aadc-d5ed7a3b4e1e
-begin
-	partial_pool_model = partial_pool(X, Z, g, Y)
-	chain_partial_pool = sample(partial_pool_model, NUTS(0.65), MCMCThreads(), 1000, 3)
-	describe(chain_partial_pool)
-end
-
-# ╔═╡ 0281aa92-b4fc-4a74-96bc-dac9787ed1ee
-X̄ = [mean(X[g.==i]) for i in 1:K]
-
-# ╔═╡ 1847f372-bcf1-4095-a9f4-c2585b05470c
-# The Mundlak Machine, feels a bit like conditional logistic regression?
-@model function mundlakmachine(X, X̄, Z, G, Y)
-	ᾱ ~ Normal()
-	τ ~ Exponential(1)
-	α ~ filldist(Normal(ᾱ, τ), length(G))
-	βX ~ Normal()
-	βZ ~ Normal()
-	βX̄ ~ Normal()
-
-	for i in eachindex(X)
-		p = logistic(α[G[i]] + βX * X[i] + βZ * Z[G[i]] + βX̄ * X̄[G[i]])
-		Y[i] ~ Bernoulli(p)
-	end
-end
-# Maybe this model is lacking the non-centered prios technique McElreath mentions!
-
-# ╔═╡ ee7a2cfd-44cb-4100-affa-29dc081c3e2a
-begin
-	mundlak_model = mundlakmachine(X, X̄, Z, g, Y)
-	chain_mundlak = sample(mundlak_model, NUTS(0.65), MCMCThreads(), 1000, 3)
-	describe(chain_mundlak)
-end
-
-# ╔═╡ d4f7219b-7486-4368-b528-782ea23c1fe2
-# Full Luxury Bayes
-@model function FLB(X, Z, G, Y)
-	αX ~ Normal()
-	σ ~ Exponential(1)
-	βu ~ Exponential(1)
-
-	for i in eachindex(G)
-		μ = αX .+ βu * Z[G[i]]
-		X̄ ~ Normal.(μ, σ)
-	end
-
-	ᾱ ~ Normal()
-	τ ~ Exponential(1)
-	α ~ filldist(Normal(ᾱ, τ), length(G))
-	βX ~ Normal()
-	βZ ~ Normal()
-	βX̄ ~ Normal()
-	
-	for i in eachindex(X)
-		p = logistic(α[G[i]] + βX * X[i] + βZ * Z[G[i]] + βX̄ * X̄[G[i]])
-		Y[i] ~ Bernoulli(p)
-	end
-end
-
-# ╔═╡ 6e033b28-ba79-4afd-9cb5-9542ac8898df
-begin
-	flb_model = FLB(X, Z, g, Y)
-	chain_flb = sample(flb_model, NUTS(0.65), 1000)
-	describe(chain_flb)
-end
-
-# ╔═╡ 6a15e7f9-9739-442d-b666-9c3fb27bb08c
-begin
-	density(DataFrame(chain_fixed)[:, :βZ], label="fixed", lw=1.5)
-	density!(DataFrame(chain_naive)[:, :βZ], label="naive", lw=1.5)
-	density!(DataFrame(chain_partial_pool)[:, :βZ], label="partial_pool", lw=1.5)
-	density!(DataFrame(chain_mundlak)[:, :βZ], label="mundlak", lw=1.5)
-	vline!([βZY], color="black", linestyle=:dash, label=:none)
-	xlabel!("βZ"); ylabel!("Density")
-end
-
-# ╔═╡ 8b62a0b6-4cef-4f4c-81e1-471cf0e21c0e
-begin
-	density(DataFrame(chain_fixed)[:, :βX], label="fixed", lw=1.5)
-	density!(DataFrame(chain_naive)[:, :βX], label="naive", lw=1.5)
-	density!(DataFrame(chain_partial_pool)[:, :βX], label="partial_pool", lw=1.5)
-	density!(DataFrame(chain_mundlak)[:, :βX], label="mundlak", lw=1.5)
-	vline!([βZY], color="black", linestyle=:dash, label=:none)
-	xlabel!("βX"); ylabel!("Density")
-end
+# ╔═╡ f226c710-4246-4b46-8802-468c84bc0561
+plot(chain_nc)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
-DataFrames = "~1.6.1"
-StatsFuns = "~1.3.0"
 StatsPlots = "~0.15.6"
-Turing = "~0.28.3"
+Turing = "~0.29.0"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.9.2"
+julia_version = "1.9.3"
 manifest_format = "2.0"
-project_hash = "62b4382c4a9671bf8665d932d50a14c0cc9f312f"
+project_hash = "70a59c4888af69777edb2754ca7af9aace5bb5fa"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "a4c8e0f8c09d4aa708289c1a5fc23e2d1970017a"
@@ -250,9 +111,9 @@ weakdeps = ["StaticArrays"]
 
 [[deps.AdvancedHMC]]
 deps = ["AbstractMCMC", "ArgCheck", "DocStringExtensions", "InplaceOps", "LinearAlgebra", "LogDensityProblems", "LogDensityProblemsAD", "ProgressMeter", "Random", "Requires", "Setfield", "SimpleUnPack", "Statistics", "StatsBase", "StatsFuns"]
-git-tree-sha1 = "d782efeacf92a1dcc65a77ea1507577d4dc843fe"
+git-tree-sha1 = "acbe805c3078ba0057bb56985248bd66bce016b1"
 uuid = "0bf59076-c3b1-5ca4-86bd-e02cd72cde3d"
-version = "0.5.4"
+version = "0.5.5"
 
     [deps.AdvancedHMC.extensions]
     AdvancedHMCCUDAExt = "CUDA"
@@ -382,9 +243,9 @@ version = "0.1.1"
 
 [[deps.Bijectors]]
 deps = ["ArgCheck", "ChainRules", "ChainRulesCore", "ChangesOfVariables", "Compat", "Distributions", "Functors", "InverseFunctions", "IrrationalConstants", "LinearAlgebra", "LogExpFunctions", "MappedArrays", "Random", "Reexport", "Requires", "Roots", "SparseArrays", "Statistics"]
-git-tree-sha1 = "af192c7c235264bdc6f67321fd1c57be0dd7ffb5"
+git-tree-sha1 = "8eacff457e5b8c13a97848484ad650dabbffa0fc"
 uuid = "76274a88-744f-5084-9051-94815aaf08c4"
-version = "0.13.6"
+version = "0.13.7"
 
     [deps.Bijectors.extensions]
     BijectorsDistributionsADExt = "DistributionsAD"
@@ -431,10 +292,10 @@ uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
 
 [[deps.ChainRules]]
-deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "Statistics", "StructArrays"]
-git-tree-sha1 = "f98ae934cd677d51d2941088849f0bf2f59e6f6e"
+deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "SparseInverseSubset", "Statistics", "StructArrays", "SuiteSparse"]
+git-tree-sha1 = "dbeca245b0680f5393b4e6c40dcead7230ab0b3b"
 uuid = "082447d4-558c-5d27-93f4-14fc19e9eca2"
-version = "1.53.0"
+version = "1.54.0"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
@@ -570,12 +431,6 @@ git-tree-sha1 = "8da84edb865b0b5b0100c0666a9bc9a0b71c553c"
 uuid = "9a962f9c-6df0-11e9-0e5d-c546b8b5ee8a"
 version = "1.15.0"
 
-[[deps.DataFrames]]
-deps = ["Compat", "DataAPI", "DataStructures", "Future", "InlineStrings", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrecompileTools", "PrettyTables", "Printf", "REPL", "Random", "Reexport", "SentinelArrays", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
-git-tree-sha1 = "04c738083f29f86e62c8afc341f0967d8717bdb8"
-uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-version = "1.6.1"
-
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
 git-tree-sha1 = "3dbd312d370723b6bb43ba9d02fc36abade4518d"
@@ -682,9 +537,9 @@ version = "0.6.8"
 
 [[deps.DynamicPPL]]
 deps = ["AbstractMCMC", "AbstractPPL", "BangBang", "Bijectors", "ChainRulesCore", "ConstructionBase", "Distributions", "DocStringExtensions", "LinearAlgebra", "LogDensityProblems", "MacroTools", "OrderedCollections", "Random", "Setfield", "Test", "ZygoteRules"]
-git-tree-sha1 = "5f712c4087df5b47018afdd3dffb0dfe5e8b89d9"
+git-tree-sha1 = "c65a403dbacd4e9f08141f030259fafc848a4f21"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.23.14"
+version = "0.23.16"
 weakdeps = ["MCMCChains"]
 
     [deps.DynamicPPL.extensions]
@@ -887,12 +742,6 @@ git-tree-sha1 = "4da0f88e9a39111c2fa3add390ab15f3a44f3ca3"
 uuid = "22cec73e-a1b8-11e9-2c92-598750a2cf9c"
 version = "0.3.1"
 
-[[deps.InlineStrings]]
-deps = ["Parsers"]
-git-tree-sha1 = "9cc2baf75c6d09f9da536ddf58eb2f29dedaf461"
-uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.4.0"
-
 [[deps.InplaceOps]]
 deps = ["LinearAlgebra", "Test"]
 git-tree-sha1 = "50b41d59e7164ab6fda65e71049fee9d890731ff"
@@ -1007,15 +856,15 @@ version = "3.0.0+1"
 
 [[deps.LLVM]]
 deps = ["CEnum", "LLVMExtra_jll", "Libdl", "Printf", "Unicode"]
-git-tree-sha1 = "8695a49bfe05a2dc0feeefd06b4ca6361a018729"
+git-tree-sha1 = "a9d2ce1d5007b1e8f6c5b89c5a31ff8bd146db5c"
 uuid = "929cbde3-209d-540e-8aea-75f648917ca0"
-version = "6.1.0"
+version = "6.2.1"
 
 [[deps.LLVMExtra_jll]]
 deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl", "TOML"]
-git-tree-sha1 = "c35203c1e1002747da220ffc3c0762ce7754b08c"
+git-tree-sha1 = "7ca6850ae880cc99b59b88517545f91a52020afa"
 uuid = "dad2f222-ce93-54a1-a47d-0025e8a3acab"
-version = "0.0.23+0"
+version = "0.0.25+0"
 
 [[deps.LLVMOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1282,9 +1131,9 @@ version = "0.10.2"
 
 [[deps.NNlib]]
 deps = ["Adapt", "Atomix", "ChainRulesCore", "GPUArraysCore", "KernelAbstractions", "LinearAlgebra", "Pkg", "Random", "Requires", "Statistics"]
-git-tree-sha1 = "3d42748c725c3f088bcda47fa2aca89e74d59d22"
+git-tree-sha1 = "3b29fafcdfa66d6673306cf116a2dc243933e2c5"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.9.4"
+version = "0.9.5"
 
     [deps.NNlib.extensions]
     NNlibAMDGPUExt = "AMDGPU"
@@ -1449,12 +1298,6 @@ version = "1.39.0"
     IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
-
-[[deps.PooledArrays]]
-deps = ["DataAPI", "Future"]
-git-tree-sha1 = "a6062fe4063cdafe78f4a0a81cfffb89721b30e7"
-uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
-version = "1.4.2"
 
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
@@ -1628,9 +1471,9 @@ version = "0.7.0"
 
 [[deps.SciMLBase]]
 deps = ["ADTypes", "ArrayInterface", "ChainRulesCore", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "PrecompileTools", "Preferences", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "Tables", "TruncatedStacktraces", "ZygoteRules"]
-git-tree-sha1 = "a1e295a85fd6fae9a7b2072dd4577001210f512d"
+git-tree-sha1 = "54b005258bb5ee4b6fd0f440b528e7b7af4c9975"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "1.95.0"
+version = "1.96.2"
 
     [deps.SciMLBase.extensions]
     ZygoteExt = "Zygote"
@@ -1703,6 +1546,12 @@ version = "1.1.1"
 deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]
 uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
+[[deps.SparseInverseSubset]]
+deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
+git-tree-sha1 = "91402087fd5d13b2d97e3ef29bbdf9d7859e678a"
+uuid = "dc90abb0-5640-4711-901d-7e5b23a2fada"
+version = "0.1.1"
+
 [[deps.SpecialFunctions]]
 deps = ["IrrationalConstants", "LogExpFunctions", "OpenLibm_jll", "OpenSpecFun_jll"]
 git-tree-sha1 = "e2cfc4012a19088254b3950b85c3c1d8882d864d"
@@ -1747,9 +1596,9 @@ version = "1.9.0"
 
 [[deps.StatsAPI]]
 deps = ["LinearAlgebra"]
-git-tree-sha1 = "45a7769a04a3cf80da1c1c7c60caf932e6f4c9f7"
+git-tree-sha1 = "1ff449ad350c9c4cbc756624d6f8a8c3ef56d3ed"
 uuid = "82ae8749-77ed-4fe6-ae5f-f523153014b0"
-version = "1.6.0"
+version = "1.7.0"
 
 [[deps.StatsBase]]
 deps = ["DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
@@ -1892,10 +1741,10 @@ uuid = "781d530d-4396-4725-bb49-402e4bee1e77"
 version = "1.4.0"
 
 [[deps.Turing]]
-deps = ["AbstractMCMC", "AdvancedHMC", "AdvancedMH", "AdvancedPS", "AdvancedVI", "BangBang", "Bijectors", "DataStructures", "Distributions", "DistributionsAD", "DocStringExtensions", "DynamicPPL", "EllipticalSliceSampling", "ForwardDiff", "Libtask", "LinearAlgebra", "LogDensityProblems", "LogDensityProblemsAD", "MCMCChains", "NamedArrays", "Printf", "Random", "Reexport", "Requires", "SciMLBase", "Setfield", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns", "Tracker"]
-git-tree-sha1 = "5e9b655060490d1a16cbe569acb276578ace48aa"
+deps = ["AbstractMCMC", "AdvancedHMC", "AdvancedMH", "AdvancedPS", "AdvancedVI", "BangBang", "Bijectors", "DataStructures", "Distributions", "DistributionsAD", "DocStringExtensions", "DynamicPPL", "EllipticalSliceSampling", "ForwardDiff", "Libtask", "LinearAlgebra", "LogDensityProblems", "LogDensityProblemsAD", "MCMCChains", "NamedArrays", "Printf", "Random", "Reexport", "Requires", "SciMLBase", "Setfield", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
+git-tree-sha1 = "83bcdf908c241f1ab54abc95af182f7b6550d591"
 uuid = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
-version = "0.28.3"
+version = "0.29.0"
 
     [deps.Turing.extensions]
     TuringDynamicHMCExt = "DynamicHMC"
@@ -2212,30 +2061,15 @@ version = "1.4.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═317e34d4-4c10-11ee-1d1b-35420748802d
-# ╠═80fe86fb-d7e4-46f6-baac-29fbc6038e9f
-# ╠═d69715f9-b618-411a-82e0-179f8dc6317a
-# ╠═312f63d2-ab2e-4ad3-bf81-6711dd0c5451
-# ╠═c840c8eb-938e-4e4c-848c-64876023e676
-# ╠═48bea5f5-f57d-49ac-902e-9037280265cc
-# ╠═b674270e-ba25-47cd-a364-8f5f10476662
-# ╠═b836b649-81cd-41a4-b51d-595ea087e704
-# ╠═a2ea64a1-6571-4e7e-a15f-ddbd9f858f43
-# ╠═17ce5176-8f8b-4241-a323-f6cc1eaad1ed
-# ╠═4a213f17-2bde-4fd5-bb32-4d553c090988
-# ╠═aeb31813-73ee-486b-9d7a-567cc40ebfa2
-# ╠═82a9eb4d-1ed9-405c-b8d3-e3d308c39066
-# ╠═764d9b19-0b10-4e09-87b5-572692affba7
-# ╠═52675a54-07ee-47c5-920c-b0894526bed6
-# ╠═a52b49f2-8a22-4cd4-807d-4e2fc0a27854
-# ╠═1ec2cba9-e45e-433b-9772-46bf0dce6f47
-# ╠═f02072ec-1fdf-4053-aadc-d5ed7a3b4e1e
-# ╠═0281aa92-b4fc-4a74-96bc-dac9787ed1ee
-# ╠═1847f372-bcf1-4095-a9f4-c2585b05470c
-# ╠═ee7a2cfd-44cb-4100-affa-29dc081c3e2a
-# ╠═d4f7219b-7486-4368-b528-782ea23c1fe2
-# ╠═6e033b28-ba79-4afd-9cb5-9542ac8898df
-# ╠═6a15e7f9-9739-442d-b666-9c3fb27bb08c
-# ╠═8b62a0b6-4cef-4f4c-81e1-471cf0e21c0e
+# ╠═bb38b9b0-54b2-11ee-2bf3-45cae1583677
+# ╠═ff7ed9f5-db2b-42a1-ae28-958f212458d0
+# ╠═34f97b80-9863-4ac8-b460-25da9a0f6dcf
+# ╠═e6c8e37b-2387-4172-84b4-01846d8ee4e2
+# ╠═879b36ff-2cfc-4fa2-ad54-26374779ae91
+# ╠═576433ac-c58d-4e2a-85f5-59f237cc979b
+# ╠═dc1e3f7c-3b4f-4a62-8fea-f476d2001762
+# ╠═295b0daa-002f-47d7-a6cb-81810061d3b8
+# ╠═b14f7631-c3b8-4ae8-842f-133a09ca810c
+# ╠═f226c710-4246-4b46-8802-468c84bc0561
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
