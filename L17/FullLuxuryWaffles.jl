@@ -57,17 +57,35 @@ end
 # ╔═╡ 6bb595fe-ac08-4fc1-b39e-d729f8ccf71b
 begin
 	m1 = luxury(A, M, D_std, D_obs)
-	chain1 = sample(m1, HMC(0.01, 10), 1000)
+	chain1 = sample(m1, HMC(0.01, 10), 3000, discard_initial=1000)
 	describe(chain1)
 end
 
 # ╔═╡ 6689984c-7202-40e8-9a4d-cbafba1b6422
-function prediction(c::Chains)
+function prediction(c::Chains, D_std)
+	p = get_params(c)
+	
+	D_obs = [rand.(Normal.(p.D_true[i], D_std[i])) for i in eachindex(A)]
+	
+	return D_obs
+end
+
+# ╔═╡ 5a0a781d-0fe3-440d-b1b6-ca7fe1e2b410
+preds = prediction(chain1, D_std)
+
+# ╔═╡ a66645a1-9985-4e4b-8315-1a16e2439ba4
+begin
+	μ_preds = mean.(preds)
+	q_preds = [quantile(m, [0.025, 0.975]) for m in preds]
 end
 
 # ╔═╡ ad0ed912-601a-4984-8ca9-f4df61dbc725
 let
-	scatter(A, D_obs)
+	scatter(A, D_obs, label="obs")
+	scatter!(A, μ_preds, label="preds")
+	xlabel!("Median age at marriage (standardised)")
+	ylabel!("Marriage rate (standardised)")
+	title!("Predicted vs observed 'observed' data")
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2205,6 +2223,8 @@ version = "1.4.1+1"
 # ╠═01fbb91b-a296-4353-a81b-e1d47202ab6f
 # ╠═6bb595fe-ac08-4fc1-b39e-d729f8ccf71b
 # ╠═6689984c-7202-40e8-9a4d-cbafba1b6422
+# ╠═5a0a781d-0fe3-440d-b1b6-ca7fe1e2b410
+# ╠═a66645a1-9985-4e4b-8315-1a16e2439ba4
 # ╠═ad0ed912-601a-4984-8ca9-f4df61dbc725
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
