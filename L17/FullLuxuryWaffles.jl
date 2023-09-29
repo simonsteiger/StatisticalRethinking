@@ -29,8 +29,11 @@ D_obs = standardise(df_wafdiv.Divorce)
 # ╔═╡ a02fc501-834f-4d11-ade2-85bb9bce2e0d
 D_std = df_wafdiv[:, "Divorce SE"] / std(df_wafdiv.Divorce)
 
-# ╔═╡ 3ec78147-8b7d-4f87-9c2e-96be821ff57f
-test = fill(D_std, 50)
+# ╔═╡ 6a1a496d-a32b-4550-b6de-e3a664b4803d
+M_obs = standardise(df_wafdiv.Marriage)
+
+# ╔═╡ f39907e8-9fc5-4559-a084-ad326e33643e
+M_std = df_wafdiv[:, "Marriage SE"] / std(df_wafdiv.Marriage)
 
 # ╔═╡ 3eb20fb1-4cba-4b6e-b7b2-d00b5ac395c2
 M = standardise(df_wafdiv.Marriage)
@@ -70,23 +73,84 @@ function prediction(c::Chains, D_std)
 	return D_obs
 end
 
-# ╔═╡ 5a0a781d-0fe3-440d-b1b6-ca7fe1e2b410
-preds = prediction(chain1, D_std)
+# ╔═╡ faa42044-c22a-4c1e-802f-61a2be2458e4
+@model function extravaganza(A, D_std, M_std, D_obs, M_obs)
+	# Priors for M graph
+	αM ~ Normal(0, 0.2)
+	βAM ~ Normal(0, 0.5)
+	τ ~ Exponential(1)
 
-# ╔═╡ a66645a1-9985-4e4b-8315-1a16e2439ba4
+	# Model for true M
+	ν = αM .+ βAM * A
+	M_true ~ MvNormal(ν, τ^2 * I)
+
+	M_obs .~ Normal.(ν, τ) # observed M
+	
+	# Priors for D graph
+	α ~ Normal(0, 0.2)
+	βA ~ Normal(0, 0.5)
+	βM ~ Normal(0, 0.5)
+	σ ~ Exponential(1)
+	
+	# Model for true D
+	μ = α .+ βA * A + βM * M_true
+	D_true ~ MvNormal(μ, σ^2 * I) # unobserved D
+
+	D_obs .~ Normal.(D_true, D_std) # observed D
+end
+
+# ╔═╡ a8f7473d-b5af-4cd8-8ffc-5b0d0166c415
 begin
-	μ_preds = mean.(preds)
-	q_preds = [quantile(m, [0.025, 0.975]) for m in preds]
+	m2 = extravaganza(A, D_std, M_std, D_obs, M_obs)
+	chain2 = sample(m2, HMC(0.01, 10), MCMCThreads(), 30_000, 3, discard_initial=5000)
+	describe(chain2)
+end
+
+# ╔═╡ 9ed6f726-af9d-449d-be58-1c5a6943cb41
+function prediction(c::Chains, M_std, D_std)
+	p = get_params(c)
+
+	M_obs = [rand.(Normal.(p.M_true[i], M_std[i])) for i in eachindex(M)]
+	
+	D_obs = [rand.(Normal.(p.D_true[i], D_std[i])) for i in eachindex(A)]
+	
+	return M_obs, D_obs
 end
 
 # ╔═╡ ad0ed912-601a-4984-8ca9-f4df61dbc725
+function plotpreds(c::Chains, xvals, D_std)
+	# Make predictions and calculate statistics
+	preds = prediction(c, D_std)
+	μ_preds = mean.(preds)
+	q_preds = [quantile(m, [0.025, 0.975]) for m in preds]
+	# Plot
+	scatter(xvals, D_obs, label="obs")
+	scatter!(xvals, μ_preds, label="preds")
+end
+
+# ╔═╡ 58757332-040a-485e-ba29-ecde77fa2854
 let
 	scatter(A, D_obs, label="obs")
-	scatter!(A, μ_preds, label="preds")
+	scatter!(A, mean.(prediction(chain1, D_std)), label="preds")
 	xlabel!("Median age at marriage (standardised)")
 	ylabel!("Marriage rate (standardised)")
 	title!("Predicted vs observed 'observed' data")
 end
+
+# ╔═╡ c7e5182c-d4fd-4522-97c1-3d11f52abf2e
+let
+	# Get means of predicted values
+	pred_M, pred_D = [mean.(p) for p in prediction(chain2, M_std, D_std)]
+	# Plot
+	scatter(M, D_obs)
+	scatter!(pred_M, pred_D)
+	xlabel!("Marriage rate (standardised)")
+	ylabel!("Divorce rate (standardised)")
+	title!("Predicted vs observed 'observed' data")
+end
+
+# ╔═╡ 4972fca8-21e8-4ae6-bea4-b0281410a6c0
+density(chain2[:, :βA, :])
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2216,15 +2280,20 @@ version = "1.4.1+1"
 # ╠═999733bb-6e29-45f1-9ec4-9aa7e3a82b78
 # ╠═a6e1417a-a14e-4cd8-850d-ab0021528fc3
 # ╠═a02fc501-834f-4d11-ade2-85bb9bce2e0d
-# ╠═3ec78147-8b7d-4f87-9c2e-96be821ff57f
+# ╠═6a1a496d-a32b-4550-b6de-e3a664b4803d
+# ╠═f39907e8-9fc5-4559-a084-ad326e33643e
 # ╠═3eb20fb1-4cba-4b6e-b7b2-d00b5ac395c2
 # ╠═1fbb1737-b8d3-416b-b45c-f0a15a364892
 # ╠═c501e176-7a09-4135-95ca-c53794d0dfc1
 # ╠═01fbb91b-a296-4353-a81b-e1d47202ab6f
 # ╠═6bb595fe-ac08-4fc1-b39e-d729f8ccf71b
 # ╠═6689984c-7202-40e8-9a4d-cbafba1b6422
-# ╠═5a0a781d-0fe3-440d-b1b6-ca7fe1e2b410
-# ╠═a66645a1-9985-4e4b-8315-1a16e2439ba4
 # ╠═ad0ed912-601a-4984-8ca9-f4df61dbc725
+# ╠═58757332-040a-485e-ba29-ecde77fa2854
+# ╠═faa42044-c22a-4c1e-802f-61a2be2458e4
+# ╠═a8f7473d-b5af-4cd8-8ffc-5b0d0166c415
+# ╠═9ed6f726-af9d-449d-be58-1c5a6943cb41
+# ╠═c7e5182c-d4fd-4522-97c1-3d11f52abf2e
+# ╠═4972fca8-21e8-4ae6-bea4-b0281410a6c0
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
