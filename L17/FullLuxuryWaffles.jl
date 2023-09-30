@@ -150,7 +150,7 @@ let
 end
 
 # ╔═╡ 4972fca8-21e8-4ae6-bea4-b0281410a6c0
-density(chain2[:, :βA, :])
+density(chain2[:, :βM, :])
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
