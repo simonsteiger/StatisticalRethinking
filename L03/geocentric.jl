@@ -1,17 +1,19 @@
 ### A Pluto.jl notebook ###
-# v0.19.46
+# v0.20.3
 
 using Markdown
 using InteractiveUtils
 
 # This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
 macro bind(def, element)
+    #! format: off
     quote
         local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
         local el = $(esc(element))
         global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
         el
     end
+    #! format: on
 end
 
 # ╔═╡ 112ddbdd-12e8-46ee-8e42-61eaa4d4d724
@@ -93,7 +95,7 @@ W = sim_weight(H, β, σ)
 let
 	fig = Figure()
 	ax = Axis(fig[1, 1], xlabel="Height", ylabel="Weight", title="Synthetic data: height by weight")
-	scatter!(H, W)
+	scatter!(H, W, color=:grey60, strokecolor=:grey40, strokewidth=0.8)
 	fig
 end
 
@@ -103,7 +105,7 @@ md"""
 
 Communicating the model structure effectively is an important part of the analysis. 
 
-LaTeX is one of the better ways to write mathematical formulas:
+LaTeX is the most established way to write mathematical formulas (but give [typst](https://typst.app) a try!):
 
 ```
 \begin{aligned}
@@ -336,7 +338,7 @@ let
 	fig = Figure(size=(400, 400))
 	ax = Axis(fig[1, 1], limits=((130, 170), (50, 90)), title="Prior predictive check")
 	for m in μ[1:50]
-		lines!(130:170, m, linewidth=2, color=:red)
+		lines!(130:170, m, linewidth=2, color=:darkred)
 	end
 	fig
 end
@@ -450,7 +452,7 @@ md"""
 
 # ╔═╡ 58299be7-6cb8-4a90-8c91-63c4f10969ca
 begin
-	n_analysis_slider = @bind n_input_analysis PlutoUI.Slider([1, 5, 25, 50, 352])
+	n_analysis_slider = @bind n_input_analysis PlutoUI.Slider([1, 5, 25, 50, 352], default=50)
 	md"""
 	Set number of data points in analysis:
 	$n_analysis_slider
@@ -479,9 +481,9 @@ let
 	fig = Figure()
 	ax = Axis(fig[1, 1], limits=((130, 180), nothing), title="N=$n_input_analysis")
 
-	scatter!(howell1.height, howell1.weight, color=:red)
+	scatter!(howell1.height, howell1.weight, color=:grey60, strokecolor=:grey40, strokewidth=0.8)
 	for y in ys
-		lines!(xs, y, color=:black, linewidth=0.7)
+		lines!(xs, y, color=:darkred, linewidth=0.7)
 	end
 	
 	fig
@@ -539,10 +541,10 @@ let
 	fig = Figure(size=(500,500))
 	ax = Axis(fig[1, 1], limits=(extrema(xs), nothing), title="N=$n_input_analysis", xlabel="Height", ylabel="Weight")
 
-	scatter!(howell1.height, howell1.weight, color=:red)
-	band!(xs, sdim(1)(qs), sdim(2)(qs), color=(:blue, 0.3))
+	scatter!(howell1.height, howell1.weight, color=:grey60, strokecolor=:grey40, strokewidth=0.8)
+	band!(xs, sdim(1)(qs), sdim(2)(qs), color=(:darkred, 0.2))
 	for y in ys
-		lines!(xs, y, color=:black, linewidth=0.5)
+		lines!(xs, y, color=:darkred, linewidth=0.5)
 	end
 	
 	fig
@@ -595,7 +597,7 @@ Turing = "~0.33.3"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.1"
+julia_version = "1.11.2"
 manifest_format = "2.0"
 project_hash = "4e0057865e1592ed054371b4dedacbde365e9193"
 
