@@ -4,11 +4,23 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
+
 # ╔═╡ 9ae4c660-8e2e-4f0a-8d5a-5747cf03ff5a
 using Turing
 
 # ╔═╡ ad06c4ef-2cba-4689-9031-0be21cfe7a1f
-using CairoMakie
+using CairoMakie # You need to this to GLMakie for the age / happiness animation!
 
 # ╔═╡ 0801c86f-988c-4376-9935-fff9f7c55f45
 using LinearAlgebra: I
@@ -19,30 +31,95 @@ using DataFrames
 # ╔═╡ 9bacd470-ea83-4733-99fd-855c20422b6e
 using Statistics: quantile
 
+# ╔═╡ 6faaffc8-1003-456a-bc8a-224336e0430b
+using Chain
+
+# ╔═╡ 0873970d-1a4d-490e-92e7-9b32123f7080
+using CSV
+
+# ╔═╡ 216847ca-8a5b-417b-b2be-cf5b578621e4
+using LogExpFunctions
+
+# ╔═╡ b633a029-192b-4dbd-abc8-1a2e511e5745
+using FreqTables
+
+# ╔═╡ fde393be-51be-49f7-ba0d-72c754efcc52
+using HypertextLiteral: @htl, @htl_str
+
+# ╔═╡ a4a62e73-6e98-4bc1-bfd0-a1cca3b3b554
+using DataStructures: CircularBuffer
+
+# ╔═╡ 0e8043fb-57a6-45df-93e9-7344c9b64905
+using PlutoUI: Slider, TableOfContents, Button
+
 # ╔═╡ 624b9016-adb5-4941-ac84-05cb38427d00
 colors = Makie.wong_colors()
 
+# ╔═╡ a1f70b28-526a-4ff8-a7cc-7d79c7028340
+@htl("""
+<h1>Ye Olde Causal Alchemy</h1>
+<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem;">
+	<div style=$(boxstyle)>
+		<h4 style="color:#222;">The Fork</h4>
+		<p>X ← Z → Y</p>
+	</div>
+	<div style=$(boxstyle)>
+		<h4 style="color:#222;">The Pipe</h4>
+		<p>X → Z → Y</p>
+	</div>
+	<div style=$(boxstyle)>
+		<h4 style="color:#222;">The Collider</h4>
+		<p>X → Z ← Y</p>
+	</div>
+	<div style=$(boxstyle)>
+		<h4 style="color:#222;">The Descendant</h4>
+		<p>X → Z → Y and Z → A</p>
+	</div>
+</div>
+""")
+
 # ╔═╡ d4d2e54c-5a4d-406d-967d-5e5ccb0d3a56
 md"""
-## The fork
+# The fork
 
 X and Y have a common cause Z, which is a categorical variable.
+
+X ← Z → Y
+"""
+
+# ╔═╡ b2afa686-f34f-4c0d-88bd-090ff65b490c
+md"""
+## Simulation
+
+Let's begin by simulating data from a fork configuration.
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=pejCkVGMcnFj7NFJ&t=502).
 """
 
 # ╔═╡ 3f7a37d7-8242-4dd7-8c70-5bd913cc824d
 N1 = 1000
 
+# ╔═╡ 626f0c72-0c65-4c56-a394-daee685b7e60
+md"""
+The variable Z is independent of the others.
+"""
+
 # ╔═╡ 596c67a9-1718-4ecf-9a81-fae75eb2fcbd
 Z1 = rand(Bernoulli(0.5), N1)
 
-# ╔═╡ 58fdf109-099f-4d1d-a71c-556c1bcd9c1a
-y_given(x; p=0.9) = (1 - x) * (1 - p) + x * p
+# ╔═╡ f759e6c3-e135-4dda-a3e6-e3d43b53f9bd
+md"""
+`p_given()` is a little helper function which returns a probability that depends on its input vector (here, `Z1`). You can jump to its definition with `Cmd / Ctrl + leftclick`.
+"""
 
 # ╔═╡ de67f719-ab41-4b77-9897-b5a811dc892f
-X1 = @. rand(Bernoulli(y_given(Z1)))
+X1 = @. rand(Bernoulli(p_given(Z1)))
 
 # ╔═╡ 526cbf77-6807-4079-869c-2dd80adb2d76
-Y1 = @. rand(Bernoulli(y_given(Z1)))
+Y1 = @. rand(Bernoulli(p_given(Z1)))
+
+# ╔═╡ c14bee9b-6993-4af0-8f8b-59672a88e9e2
+freqtable(X1, Y1)
 
 # ╔═╡ c7c7af69-f54e-4240-89b3-52328cb0e48c
 md"""
@@ -58,10 +135,7 @@ This correlation disappears if we look within each level of Z
 """
 
 # ╔═╡ 989985ef-f385-423c-9cc7-61436423e8e9
-cor(X1[Z1.==0], Y1[Z1.==0])
-
-# ╔═╡ 5b870b67-3808-4243-8c15-ef494215fdfb
-cor(X1[Z1.==1], Y1[Z1.==1])
+cor(X1[Z1], Y1[Z1]), cor(X1[.!Z1], Y1[.!Z1])
 
 # ╔═╡ 35b585da-c4b7-4e67-a7a9-b954622cb09c
 md"""
@@ -80,8 +154,13 @@ X2 = @. rand(Normal(2 * Z2 - 1))
 # ╔═╡ 135c0784-eb69-4594-a1ee-237e8beda68d
 Y2 = @. rand(Normal(2 * Z2 - 1))
 
+# ╔═╡ 58e24984-cf7b-4833-b99f-949abd966e68
+md"""
+The following model conditions X on Y. We'll use it throughout the script to show how the different confounds affect our estimates.
+"""
+
 # ╔═╡ e3494929-a149-4bb5-a426-201e18cc3294
-@model function fork_continuous(x)
+@model function xyzmodel(x)
 	α ~ Normal(0, 1)
 	β ~ Normal(0, 1)
 	σ ~ Exponential(1)
@@ -89,41 +168,859 @@ Y2 = @. rand(Normal(2 * Z2 - 1))
 	y ~ MvNormal(μ, σ^2 * I)
 end
 
+# ╔═╡ e213de8b-e0d5-4564-a95c-dccc1ec2e519
+@model function xyzmodel_adjusted(x, z)
+	n_z = length(unique(z))
+	α ~ filldist(Normal(0, 1), n_z)
+	β ~ filldist(Normal(0, 1), n_z)
+	σ ~ Exponential(1)
+	μ = @. α[z] + β[z] * x
+	y ~ MvNormal(μ, σ^2 * I)
+end
+
 # ╔═╡ 4b853b1e-4470-4e09-8ae1-27dcd06191cd
-m2 = fork_continuous(X2) | (y=Y2,)
+m2 = xyzmodel(X2) | (y=Y2,);
 
 # ╔═╡ 2bc48db1-d02c-495a-9e30-c46daa97ed4f
 chn2 = sample(m2, NUTS(), 1000);
 
-# ╔═╡ fc60e8b4-978b-4b07-9926-85a3d9cb72b8
-pred_df = DataFrame(predict(fork_continuous(collect(-3:0.1:3)), chn2))[:, 3:end]
+# ╔═╡ 75898116-51b1-4d2f-b184-606cc8ec34d9
+m3 = let
+	z_idx = Z2 .+ 1
+	xyzmodel_adjusted(X2, z_idx) | (y=Y2,)
+end;
 
-# ╔═╡ 09ee0ca0-d66a-453b-8586-5892dd41a5b9
-sdim(a) = x -> map(i -> i[a], x)
+# ╔═╡ cafb1472-93bd-4a4f-977a-4fdda501bf0e
+chn3 = sample(m3, NUTS(), 1000);
+
+# ╔═╡ a7405c21-5b4d-46eb-a584-9905dbde1ada
+md"""
+## Example plot
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=_Km0dQebJ8O3_Ctz&t=621).
+"""
 
 # ╔═╡ 295bef51-9a13-4fb6-9ea4-04798cb5c8ea
+XYZ_plot(chn2, chn3, X2, Y2, Z2)
+
+# ╔═╡ 0b7dabf2-eeaf-4db0-9c39-bceeb6f6c1db
+md"Use `Cmd` / `Ctrl + leftclick` to jump to the definition of a helper function such as `XYZ_plot()`."
+
+# ╔═╡ 2bd27535-c2b0-4aa4-9f43-4eaa8856b183
+md"""
+## Divorce rate example
+"""
+
+# ╔═╡ 0191d5d9-a978-4ad8-b930-fbb96b32d6c4
+df_wafdiv = @chain begin
+	"https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/"
+	CSV.read(download(joinpath(_, "WaffleDivorce.csv")), DataFrame)
+end
+
+# ╔═╡ 830c269a-b63a-4984-a472-f3a15c406caf
 let
-	qs = [quantile(col, [0.1, 0.5, 0.9]) for col in eachcol(pred_df)]
 	fig = Figure()
-	ax = Axis(fig[1, 1], limits=((-2.5, 2.5), nothing))
-	scatter!(X2, Y2)
-	lines!(-3:0.1:3, sdim(2)(qs))
-	band!(-3:0.1:3, sdim(1)(qs), sdim(3)(qs), color=(colors[1], 0.3))
+	ax1 = Axis(fig[1, 1], xlabel="Marriage rate", ylabel="Divorce rate")
+	ax2 = Axis(fig[1, 2], xlabel="Median age of marriage", ylabel="Divorce rate")
+	ax3 = Axis(fig[2, 2], xlabel="Median age of marriage", ylabel="Marriage rate")
+
+	c_south = colors[df_wafdiv.South .+ 1]
+	
+	scatter!(ax1, df_wafdiv.Marriage, df_wafdiv.Divorce, color=c_south)
+	scatter!(ax2, df_wafdiv.MedianAgeMarriage, df_wafdiv.Divorce, color=c_south)
+	scatter!(ax3, df_wafdiv.MedianAgeMarriage, df_wafdiv.Marriage, color=c_south)
+
 	fig
 end
+
+# ╔═╡ a3688857-4b88-46ee-8d35-9b10901a9299
+md"""
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=DljIIjzeqLDSGauV&t=804).
+
+**TODO**: Get DAGs in here!
+
+We want to know what influence marriage rate $M$ has on divorce rate $D$, considering the potential fork age at marriage $A$.
+
+McElreath goes into a bit of detail on how to think about stratifying by a continuous variable. One way that I found helpful is to think of the "default" (the intercept part $\alpha + \beta_A A_i$) as the variable space _excluding_ the predictor of interest, here $M$.
+
+Given this "default", we then ask whether we learn anything "extra" if we add the predictor of interest $M$ back in. If the answer is no, then the entire effect of $M$ went through the fork with $A$.
+"""
+
+# ╔═╡ 97641ab4-2d70-4cdf-aaa3-bdd210cac62e
+let
+	fig = Figure(size=(400, 600))
+	ax3 = Axis3(fig[2, 1], xlabel="Age at marriage", ylabel="Marriage rate", zlabel="Divorce rate", title="Does including M tell us more about D?")
+	scatter!(df_wafdiv.MedianAgeMarriage, df_wafdiv.Marriage, df_wafdiv.Divorce)
+	ax = Axis(fig[1, 1], xlabel="Age at marriage", ylabel="Divorce rate", title="""Dropping the M dimension, the "default" """)
+	scatter!(df_wafdiv.MedianAgeMarriage, df_wafdiv.Divorce)
+	fig
+end
+
+# ╔═╡ addf5fad-32c9-42e3-822b-4c4d692e27d5
+md"""
+### Turing Model
+"""
+
+# ╔═╡ d2011edf-9d47-41d7-a203-1553392aee3a
+@model function marriage(A, M; α_prior, β_prior)
+	α ~ Normal(0, α_prior)
+	βA ~ Normal(0, β_prior)
+	βM ~ Normal(0, β_prior)
+	σ ~ Exponential(1)
+
+	μ = @. α + βM * M + βA * A
+	D ~ MvNormal(μ, σ.^2 * I)
+
+	return (; α, βM, βA, σ, μ, D)
+end
+
+# ╔═╡ 543683e7-7de4-475c-bb0e-68694d9ff055
+md"""
+### Prior predictive check
+
+Let's set up our model with prior choices that we typically see: flat priors. The reasoning behind choosing flat priors often revolves around not wanting to bias one's analysis.
+
+As we will see below, the assumptions embodied by those choices are often so wild that no one would think they're even remotely plausible a priori. 
+
+A helpful approach for thinking about priors is that they should place weight on parameter constellations that are plausible, and disfavour those that are outright impossible or at least highly implausible.
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=HGgIPjKPkknDwwdJ&t=1232).
+"""
+
+# ╔═╡ 1264579c-8d55-4fab-98b9-ec9deef04cab
+marriage_model_flat = let
+	A = standardise(df_wafdiv.MedianAgeMarriage)
+	M = standardise(df_wafdiv.Marriage)
+	marriage(A, M; α_prior=10, β_prior=10)
+end;
+
+# ╔═╡ ad09f5ee-9c8f-49d0-bace-e7f43ac8dc3a
+let
+	fig = Figure()
+	ax = Axis(fig[1, 1], limits=((-2, 2), (-2, 2)), xlabel="Age at marriage (standardised)", ylabel="Divorce rate (standardised)", title="Prior predictive check: Flat priors")
+	n_prior_samples = 30
+	for _ in 1:n_prior_samples
+		Aseq = collect(-3:0.1:3)
+		D_pred = @. marriage_model_flat().α + marriage_model_flat().βA * Aseq
+		lines!(Aseq, D_pred, color=colors[1])
+	end
+	fig
+end
+
+# ╔═╡ 8be14eb2-1032-43e5-9cf6-d29cefc4686d
+marriage_model_contained = let
+	A = standardise(df_wafdiv.MedianAgeMarriage)
+	M = standardise(df_wafdiv.Marriage)
+	marriage(A, M; α_prior=0.2, β_prior=0.5)
+end;
+
+# ╔═╡ 7f930e23-32b0-4f13-a6c4-222da423e827
+md"""
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=EFyD1qXUyYna5BY4&t=1352).
+"""
+
+# ╔═╡ 1c3d5836-3204-4806-9ab5-dc5c69c73a27
+let
+	fig = Figure()
+	ax = Axis(fig[1, 1], limits=((-2, 2), (-2, 2)), xlabel="Age at marriage (standardised)", ylabel="Divorce rate (standardised)", title="Prior predictive check: Containment priors")
+	n_prior_samples = 30
+	for _ in 1:n_prior_samples
+		Aseq = collect(-3:0.1:3)
+		D_pred = @. marriage_model_contained().α + marriage_model_contained().βA * Aseq
+		lines!(Aseq, D_pred, color=colors[1])
+	end
+	fig
+end
+
+# ╔═╡ ba3a3f91-48f0-47b1-925a-6355c81cb477
+md"""
+### Analyze the data
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=76s7C-lbb5Xhx47a&t=1450).
+"""
+
+# ╔═╡ 86a46e39-d802-4ea0-aa97-2fac5b3ec760
+marriage_cond = marriage_model_contained | (D=standardise(df_wafdiv.Divorce),);
+
+# ╔═╡ 8c8cca7c-141d-4f47-b122-c8edd810eeba
+chn_marriage = sample(marriage_cond, NUTS(), 1000);
+
+# ╔═╡ 49ddb356-2c81-4b5f-8a45-ab9d91d8db99
+describe(chn_marriage)
+
+# ╔═╡ 566a9779-f946-489f-a8be-872172ddfde5
+md"""
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=foTj1iWZOjb2233s&t=1454).
+"""
+
+# ╔═╡ 23b6c201-fa64-4bf7-bd65-f770efee803a
+md"""
+### Causal effect of $M$
+
+We're interested in the causal effect of $M$. Just reporting the posterior of $\beta_M$ is not quite it though. While not terrible, this really only works in very simple linear regressions.
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=2Do1TAcCREMOcHMH&t=1624).
+"""
+
+# ╔═╡ f069370b-bb7e-4178-a730-7a5c3d963864
+function do_M(A, α, βM, βA, σ; M)
+	μ = @. α + βM * M + βA * A
+	return @. rand(Normal(μ, σ))
+end
+
+# ╔═╡ 5121d828-545a-48e8-9e2d-331f81ad923e
+md"""
+# The pipe
+
+X associates with Z, and Z associates with Y.
+
+X → Z → Y
+
+When we stratify by values of Z, there is no association left between X and Y. Any variation in X that is also found in Y must pass through Z.
+
+!!! note "TL;DR"
+	Z already knows everything about X that influences Y.
+
+## Simulation
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=V9H2aMBXqBJVGS-0&t=2050).
+"""
+
+# ╔═╡ 7ea81597-c96c-43a2-827c-f660fe424558
+N3 = 1000
+
+# ╔═╡ 2afae9d7-ee86-4177-8496-0cdd83c12edf
+X3 = rand(Bernoulli(0.5), N3)
+
+# ╔═╡ bf76c6cb-6601-49d7-a9e1-8e2b72d59666
+N4 = 300
+
+# ╔═╡ 27646085-2898-46bd-bb25-20927e42a22d
+X4 = rand(Normal(), N4)
+
+# ╔═╡ 996c31d5-e4aa-46c4-8f3b-51932ac80109
+Z4 = rand.(Bernoulli.(logistic.(X4)))
+
+# ╔═╡ 649972b7-9feb-4b20-99e6-e6822c798b55
+Y4 = rand.(Normal.(2 .* Z4 .- 1));
+
+# ╔═╡ c8eb37f8-0741-45dd-96d8-91622760b47c
+m4 = xyzmodel(X4) | (y=Y4,);
+
+# ╔═╡ f6bc4050-7e3d-4066-8c07-1ccab8f2c912
+chn4 = sample(m4, NUTS(), 1000);
+
+# ╔═╡ ac7715d0-3f49-46b6-a693-205972f29639
+m5 = let
+	z_idx = Z4 .+ 1
+	xyzmodel_adjusted(X4, z_idx) | (y=Y4,)
+end
+
+# ╔═╡ 460c1bfe-15f9-4f3d-a9af-8f264217d6a0
+chn5 = sample(m5, NUTS(), 1000);
+
+# ╔═╡ 259b2b46-73be-49cb-91b1-8e03045455d9
+md"""
+## Example plot
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=jL7Lf6zrUVFrdpa0&t=2094).
+"""
+
+# ╔═╡ 3c446ae3-4662-4bb2-8b27-f2330033125e
+XYZ_plot(chn4, chn5, X4, Y4, Z4)
+
+# ╔═╡ 978fa4aa-e220-4c98-938e-65d0eb322b37
+md"""
+## Fungus example
+
+We model the effect of an anti-fungal treatment on plant growth. We know the following things about how our variables relate (and should draw a DAG here if there were any easy tools to do so... but I don't know of any):
+
+- Plant height at time 0, `H0`, influences height at time 1, `H1`
+- Fungus presence `F` influences `H1`
+- Anti-fungal treatment `T` influences both `F` and `H1` (treatment could be toxic, but the positive on height by reducing `F` is probably larger)
+
+Stratifying by `F` would block the pipe!
+
+!!! note "Blocking the pipe"
+	Having a fungus or not already contains all the (positive) influence that the anti-fungal treatment might have on plant growth"
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=7YQFFFm0Pl5UwRTU&t=2178). Note that there isn't any code for this example in the video lecture.
+"""
+
+# ╔═╡ 4e55395a-fe7c-4164-8f9f-4946ff7107bd
+N_fungus = 100
+
+# ╔═╡ e0c6272f-149f-4b97-9007-a9d3ef790630
+H0 = rand(Normal(10, 2), N_fungus)
+
+# ╔═╡ 6a281052-745e-4338-b8d3-34d6ba51f68f
+T = repeat([true, false], N_fungus ÷ 2)
+
+# ╔═╡ 428a8063-7b8f-498e-bbcc-6eed8cd4ddbe
+F = rand.(Bernoulli.(0.5 .- T .* 0.4))
+
+# ╔═╡ 0cc9f4e6-9b25-4177-a1a8-5eafea6f75d4
+freqtable(DataFrame((; T, F)), :T, :F)
+
+# ╔═╡ 3e858766-c3e8-4283-a775-58bdea6d56be
+H1 = H0 .+ rand.(Normal.(5 .- 3 .* F))
+
+# ╔═╡ 44dcd91d-1113-4e86-9a9f-c8e6bb150c99
+md"""
+### Turing Model
+"""
+
+# ╔═╡ 65bc9834-6ee6-433a-aa65-09563bc6d74a
+@model function fungus_direct(H0, T)
+	α ~ Normal(0, 100)
+	βH0 ~ Normal(0, 10)
+	βT ~ Normal(0, 10)
+	σ ~ Uniform(0, 10)
+	μ = α .+ βH0 .* H0 + βT .* T
+
+	H1 ~ MvNormal(μ, σ^2 * I)
+end
+
+# ╔═╡ ad0a3d2d-16e5-4253-bc18-3144fa2810fe
+m_fungus = fungus_direct(H0, T);
+
+# ╔═╡ 493afc69-30b7-4d08-9ee5-11e8c3e7d284
+m_fungus_cond = m_fungus | (H1=H1,);
+
+# ╔═╡ 27f4b2fe-e2db-4730-be2f-a26122a47975
+chn_fungus = sample(m_fungus_cond, NUTS(), 1000);
+
+# ╔═╡ a2c6cda2-2f9f-4750-9ee3-ebdde7cc3fbf
+describe(chn_fungus)
+
+# ╔═╡ 3ff6eb12-962b-4d3c-ac14-1d8cfa1e0c4c
+md"""
+### Forest plot: correct model
+"""
+
+# ╔═╡ 8962e445-6f21-42ea-bdd8-bf8568defe8a
+md"""
+!!! note "Answering a different question:"
+	The model below answers the wrong question:
+	
+	Knowing if a plant had the fungus, what is the effect of treatment on growth?
+"""
+
+# ╔═╡ 293a64d3-de54-400d-a045-4445080013b5
+@model function fungus_brokenpipe(H0, T, F)
+	α ~ Normal(0, 100)
+	βH0 ~ Normal(0, 10)
+	βT ~ Normal(0, 10)
+	βF ~ Normal(0, 10)
+	σ ~ Uniform(0, 10)
+	μ = α .+ βH0 .* H0 + βT .* T + βF .* F
+
+	H1 ~ MvNormal(μ, σ^2 * I)
+end
+
+# ╔═╡ 4fd23cb3-ef41-44f8-a505-8c3d9a73b934
+m_fungus_broke = fungus_brokenpipe(H0, T, F);
+
+# ╔═╡ 8f8472a6-c1db-4a25-85ef-b0816a0fc782
+m_fungus_broke_cond = m_fungus_broke | (H1=H1,);
+
+# ╔═╡ 1f8a54a5-8271-4b4e-93fb-10464313f48c
+chn_fungus_broke = sample(m_fungus_broke_cond, NUTS(), 1000);
+
+# ╔═╡ a4b7f04a-531a-4f12-b82c-01353ea65741
+md"""
+### Forest plot: broken pipe
+"""
+
+# ╔═╡ 5e262894-c0fd-410b-b10a-8d56fdf2f9c5
+describe(chn_fungus_broke)
+
+# ╔═╡ 7cab1241-00b8-49b1-9be9-168ed55678da
+md"""
+# The collider
+
+X → Z ← Y
+
+## Simulation
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=MefUWjP3d_ey97Uh&t=2767).
+"""
+
+# ╔═╡ 9535009c-d310-4609-8fc5-fbc6ca3004eb
+N5 = 1000
+
+# ╔═╡ 81b4feb2-c54a-4280-9abe-9768e76f1b46
+X5 = rand(Bernoulli(0.5), N5)
+
+# ╔═╡ 263363b9-1189-47af-8c83-174172399202
+Y5 = rand(Bernoulli(0.5), N5)
+
+# ╔═╡ 342ea36f-0b89-4b0e-8e80-cb6179cafc8a
+Z5 = let
+	pZ = [x + y > 0 ? 0.9 : 0.2 for (x, y) in zip(X5, Y5)]
+	rand.(Bernoulli.(pZ))
+end
+
+# ╔═╡ 3fa30379-fd05-4a04-a6c3-723bd7dee488
+freqtable(X5, Y5)
+
+# ╔═╡ a2e663ac-e8d3-4742-86fb-cc39e87d2d88
+cor(X5, Y5)
+
+# ╔═╡ dba4286d-67d4-4bdb-a748-d455ac3a1799
+freqtable(X5[Z5], Y5[Z5])
+
+# ╔═╡ 39ab8ea0-fb10-4d13-9e8c-fd36212a43c5
+cor(X5[Z5], Y5[Z5])
+
+# ╔═╡ 4722487e-fbab-45a3-849f-ad050b42c7c9
+freqtable(X5[.!Z5], Y5[.!Z5])
+
+# ╔═╡ 3c8a77f3-a051-4ca2-baf1-aa7b992434a2
+cor(X5[.!Z5], Y5[.!Z5])
+
+# ╔═╡ 0f1e65ce-14bb-40cd-9631-b2a3d17b4bf6
+N6 = 300
+
+# ╔═╡ 089b39cf-ced1-40e7-b652-f9fe46662e95
+X6 = rand(Normal(), N6)
+
+# ╔═╡ dfd96703-9194-46ac-a5c3-3a4498cabb74
+Y6 = rand(Normal(), N6)
+
+# ╔═╡ f0c682b0-68cd-4e13-8b31-991652ae9a25
+Z6 = rand.(Bernoulli.(logistic.(2 .* X6 .+ 2 .* Y6 .- 2)))
+
+# ╔═╡ d194d01f-5cea-427c-99ed-e92295b602a1
+m6 = xyzmodel(X6) | (y=Y6,);
+
+# ╔═╡ daebc097-c5e2-47e5-98b2-b7dd02f2bec3
+chn6 = sample(m6, NUTS(), 1000);
+
+# ╔═╡ 6e2875ae-560c-4572-ac86-66bca208a17b
+m7 = xyzmodel_adjusted(X6, Z6.+1) | (y=Y6,);
+
+# ╔═╡ 491001ba-76cb-493a-bc8b-3841eecb81c5
+chn7 = sample(m7, NUTS(), 1000);
+
+# ╔═╡ ecc7815f-8b37-4016-a8dc-7fe16c3cbdf5
+md"""
+## Example plot
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=o-qSemfs0AwvPmVy&t=2868).
+"""
+
+# ╔═╡ 6c57c756-ab15-4062-ac8b-79447e2a8690
+XYZ_plot(chn6, chn7, X6, Y6, Z6)
+
+# ╔═╡ 4ea646e4-464f-448f-a672-3e659f65e588
+md"""
+## Grant application example
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=LRgzoKEr4MsmQyTG&t=2929).
+"""
+
+# ╔═╡ 079a287c-c629-4d49-83d3-72adb5fe66e8
+N_applications = 200
+
+# ╔═╡ 1b62d04d-7c30-4e53-9918-6798f6ef4b75
+trusty = rand(Normal(), N_applications)
+
+# ╔═╡ 58c52cfb-5c34-4962-a007-fec1dd1ff550
+newsy = rand(Normal(), N_applications)
+
+# ╔═╡ 225a2559-4b93-4938-97a6-2ceec7315f5f
+cor(trusty, newsy)
+
+# ╔═╡ 88c757c3-81fc-4d00-bc03-704d8591b3e1
+accept = [n + t > 1.5 ? true : false for (n, t) in zip(newsy, trusty)]
+
+# ╔═╡ 0394a696-60d0-4965-b389-a1de0641fc89
+md"""
+!!! note "Passing the threshold"
+	Data from application processes usually require an applicant to be sufficiently good at some of the requirements. In the example of the grant applications, this means that an application has to be either sufficiently newsworthy _or_ sufficiently trustworthy. 
+
+	It's possible to be accepted with a decent performance in both areas, but this will not prevent the collider bias from manifesting. 
+
+	In a scenario where the hypothetical criteria for passing the threshold are not strongly positively correlated, the cases that excel at both criteria will be few though.
+"""
+
+# ╔═╡ 99abaacc-a4a5-40a7-a09b-4464ac7321e0
+let
+	fig = Figure()
+	ax = Axis(fig[1, 1], xlabel="Newsworthiness", ylabel="Trustworthiness")
+	sca1 = scatter!(newsy[accept], trusty[accept], color=:red)
+	sca2 = scatter!(newsy[.!accept], trusty[.!accept], color=:grey60)
+	axislegend(ax, [sca1, sca2], ["Accepted", "Declined"])
+	
+	fig
+end
+
+# ╔═╡ 9c3a902e-fae5-4398-99e8-a242c5d8192f
+md"""
+## Age and happiness
+
+The following part has less to do with Bayesian statistics. It's a fun coding challenge and a great exercise to learn how animating graphs works in Julia though!
+
+The goal of the code below is to simulate a population of individuals who differ in their age and happiness. This simulation makes some simplifying assumptions:
+
+- happiness is constant throughout life
+- only happiness determines the probability of marrying
+- once married, an individual is always married
+
+Regarding the collider in this example, we would see that a stratification by marital status induces a negative correlation between age and happiness. 
+
+This means that, considering either only married or only unmarried individuals (= stratifying), we can already make out from the graph that on average younger people are happier than older people.
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=6HByAbcYzxTbaYZ8&t=3296). Note that there isn't any code in the video segment. I also don't own the 2nd Edition of the book, so I'd be curious to see other solutions to this simulation. There are probably much better ones than mine!
+
+!!! danger "Animation"
+	The animation requires that you (1) run the notebook interactively (see the button in the top right for how to do that) and (2) enable WGLMakie as a backend. This is the web-backend of Makie and enables animations inside Pluto. Go to the top of this notebook and swap `CairoMakie` for `GLMakie`.
+"""
+
+# ╔═╡ 1e774bc3-d68e-4cb1-a3f8-b38b2a51ee14
+@bind go Button("Click to animate for 10s")
+
+# ╔═╡ c38b963c-9fc8-499b-a25f-6052102cec8b
+mutable struct Person
+    age::Float64
+    happiness::Float64
+    married::Bool
+    function Person(; age=0.0, happiness)
+        return new(age, happiness, false)
+    end
+end
+
+# ╔═╡ c2af81a9-1fc3-41f9-9305-504b2c67231f
+default_range = -2:0.1:2
+
+# ╔═╡ c2b9d1d4-658e-4945-9b8f-16c63187c57f
+max_age = 65
+
+# ╔═╡ eb1a531a-9b6a-4850-ad7b-4c20a914007e
+function addbirths!(cohort; happiness_range=default_range)
+	for h in happiness_range
+		push!(cohort, Person(happiness=h))
+	end
+	return nothing
+end
+
+# ╔═╡ 06911dff-b5ab-4fae-8390-ebfc3fb5872b
+function maybemarry!(person; scale=1.5, shift=0.0, max_p=0.04)
+	p = logistic(scale * person.happiness - shift)
+	person.married = rand(Bernoulli(p * max_p))
+	return nothing
+end
+
+# ╔═╡ 37daaab4-a00e-476f-b7fb-f18b993b7e55
+age!(person) = person.age += 1.0
+
+# ╔═╡ 21755048-d36e-477e-8a90-c03a618ca1e5
+happiness(x) = getproperty(x, :happiness)
+
+# ╔═╡ 9473a62e-33a7-4ced-ae95-4216d23b3619
+age(x) = getproperty(x, :age)
+
+# ╔═╡ 001c8153-085b-4856-9078-948ead1d58ff
+function progress!(cohort)
+    addbirths!(cohort)
+    for person in cohort
+        if person.married || person.age < 18
+            age!(person)
+            continue
+        end
+        maybemarry!(person)
+        age!(person)
+    end
+    return nothing
+end
+
+# ╔═╡ c5aede88-1ad8-421c-a436-f7375fb31d62
+cohort_size = length(default_range) * max_age
+
+# ╔═╡ e9adc2cc-b9da-457e-970b-70efe9c3a891
+cohort = CircularBuffer{Person}(cohort_size)
+
+# ╔═╡ 0735627f-fcc1-4342-9631-16cd72a3d45c
+col = (
+	married = colorant"#571F4E",
+	unmarried = colorant"#C8C2D6",
+	minor = colorant"#D9D9D9",
+)
+
+# ╔═╡ 56b558e8-0eb8-4ab4-84be-eca23f8678db
+function colorise(person)
+	if person.married
+		return col.married
+	elseif person.age < 18
+		return col.minor
+	else
+		return col.unmarried
+	end
+end
+
+# ╔═╡ e1fe084f-2831-4caa-bd95-3df9bb574354
+begin
+	married_points = colorise.(cohort)
+	married_points = Observable(married_points)
+end
+
+# ╔═╡ 536c5305-9edb-421b-91d2-41e7e61138f9
+let
+	fig = Figure()
+	ax = Axis(fig[1, 1], xlabel="Age (years)", ylabel="Happiness (z-standardised)")
+	scatter!(ax, age.(cohort), happiness.(cohort), color=married_points)
+
+	labels = ["Married", "Unmarried", "Minor"]
+	elements = [PolyElement(polycolor=c) for c in values(col)]
+	Legend(fig[2, 1], elements, labels, "Marriage status", orientation=:horizontal)
+	
+	fig
+end
+
+# ╔═╡ 2d093b41-8946-47fb-830c-6820af541748
+function animstep!(cohort, married_points)
+    progress!(cohort)
+    married_points[] = colorise.(cohort)
+end
+
+# ╔═╡ bb2fbf30-c393-4c8d-b746-8e0109c28449
+for i in 1:100
+    progress!(cohort)
+end
+
+# ╔═╡ 57dfca39-9ceb-4433-91f1-23ad68a2f955
+let go
+	for i in 1:100
+    	animstep!(cohort, married_points)
+    	sleep(0.1)
+	end
+end
+
+# ╔═╡ 04123c48-1ed6-44e9-870b-772417a4677b
+md"""
+# The descendant
+X → Z → Y and Z → A
+
+Link to [video segment](https://youtu.be/mBEA7PKDmiY?si=6jbJNLQGg94Fle-r&t=3687).
+"""
+
+# ╔═╡ d65b37da-9081-426e-ac20-ad165c37f7a7
+N7 = 1000
+
+# ╔═╡ 06825892-a7e1-45ee-88b2-d8c64f2493b2
+X7 = rand(Bernoulli(0.5), N7)
+
+# ╔═╡ 88bc24c5-b80a-423b-a529-5bee6500b7ec
+md"""
+!!! note "Estimate too low"
+	Stratifying by the descendant A distorts the observed correlation between X and Y – it's too low!
+"""
+
+# ╔═╡ d963aedc-a994-4455-b72d-bee52097e640
+md"""
+# Helpers
+"""
+
+# ╔═╡ 9396dc5f-d885-4894-a0f7-4d1910d3eb5a
+p_given(x; q=0.9) = (1 - x) * (1 - q) + x * q
+
+# ╔═╡ db66598a-73ce-4949-a1c7-f1d90f1e3e66
+p_given.(Z1)
+
+# ╔═╡ 3cd9e2cd-1ad3-4622-9ea3-d82a3051acf8
+Z3 = rand.(Bernoulli.(p_given.(X3)))
+
+# ╔═╡ c602d08f-3298-4854-9602-c59d990f8bba
+Y3 = rand.(Bernoulli.(p_given.(Z3)))
+
+# ╔═╡ cdc02a0f-eaa5-4928-bec5-1092a1942631
+freqtable(X3, Y3)
+
+# ╔═╡ 828b10fb-2573-4852-aa80-5b6f8f2cdedc
+cor(X3, Y3)
+
+# ╔═╡ d6b7246a-57b3-4fe7-9427-41003b7cfa72
+cor(X3[Z3], Y3[Z3]), cor(X3[.!Z3], Y3[.!Z3])
+
+# ╔═╡ 10c6bd0c-1be5-45a7-8f12-48d87a7854f2
+Z7 = rand.(Bernoulli.(p_given.(X7)))
+
+# ╔═╡ 1593a2b5-c450-44b2-9f4c-fba5ced6a151
+Y7 = rand.(Bernoulli.(p_given.(Z7)))
+
+# ╔═╡ 4e05e8ee-6504-4eea-8c09-7a16988ea47c
+freqtable(X7, Y7)
+
+# ╔═╡ da83c9ea-d560-4d3d-93bb-305cb957683e
+cor(X7, Y7)
+
+# ╔═╡ d2b7c992-6a5a-45e1-8027-8290121f9061
+A7 = rand.(Bernoulli.(p_given.(Z7)))
+
+# ╔═╡ e1c11dd9-601a-4d13-9d27-1a768569ca17
+freqtable(X7[A7], Y7[A7])
+
+# ╔═╡ 27ea232a-2f31-4e14-8e39-512face14385
+cor(X7[A7], Y7[A7])
+
+# ╔═╡ d0bf0439-7a22-46aa-b104-5a5b16faa9a0
+freqtable(X7[.!A7], Y7[.!A7])
+
+# ╔═╡ d9139bca-073f-4dd1-bae9-3db35b45fa15
+cor(X7[.!A7], Y7[.!A7])
+
+# ╔═╡ 2c4652c3-1080-49e4-bf12-8813d5b3e431
+"""
+Z-standardise a variable such that it's mean = 0 and standard deviation = 1.
+"""
+standardise(x) = (x .- mean(x)) ./ std(x)
+
+# ╔═╡ 09ee0ca0-d66a-453b-8586-5892dd41a5b9
+"""
+	sdim(a)
+
+Create an anonymous function to slice an array along the `a`th dimension.
+"""
+sdim(a) = x -> map(i -> i[a], x);
+
+# ╔═╡ 07e9c04c-d62b-4f4a-abcc-2ded33c61731
+"""
+	sdim(a::Symbol)
+
+Create an anonymous function to extract the properties called `:a` from an array.
+"""
+sdim(a::Symbol) = x -> getproperty.(x, a)
+
+# ╔═╡ a87bac50-8d65-4ba3-99ae-073fe8dd6432
+function model_to_namedtuple(model, chn, params)
+	quantities = generated_quantities(model, chn)
+	values = [vec(sdim(param)(quantities)) for param in params]
+	return NamedTuple{Tuple(params)}(values)
+end
+
+# ╔═╡ e8dd0795-c36b-4131-82a3-e03af92c23be
+modelparams = model_to_namedtuple(marriage_cond, chn_marriage, [:α, :βM, :βA, :σ])
+
+# ╔═╡ 37ee972e-665d-4544-a917-7a8a214c1cd8
+contrast_M10 = let 
+	A = rand(standardise(df_wafdiv.MedianAgeMarriage), 1000)
+	M0 = do_M(A, modelparams...; M=0)
+	M1 = do_M(A, modelparams...; M=1)
+	M1 .- M0
+end
+
+# ╔═╡ d09d721d-676e-4b30-aa32-449a37772f15
+let
+	fig = Figure()
+	ax = Axis(fig[1, 1], xlabel="Effect of 1 SD increase in M", ylabel="Density")	
+	density!(contrast_M10)
+	fig
+end
+
+# ╔═╡ 976260ae-03a1-4149-99ea-6cbd5cdba5e6
+"""
+Create a simple line plot to illustrate the "elemental confounds".
+"""
+function XYZ_plot(chn1, chn2, X, Y, Z)
+	α_u = mean(chn1[:, "α", :])
+	β_u = mean(chn1[:, "β", :])
+	α = [mean(chn2[:, "α[1]", :]), mean(chn2[:, "α[2]", :])]
+	β = [mean(chn2[:, "β[1]", :]), mean(chn2[:, "β[2]", :])]
+
+	# Set up figure
+	fig = Figure()
+	ax = Axis(fig[1, 1], limits=((-2.5, 2.5), nothing), xlabel="X", ylabel="Y")
+
+	# Scatter raw data
+	scatter!(X4, Y4, color=colors[Z4 .+ 1])
+
+	# Regression lines for adjusted model
+	ablines!(α, β, color=:white, linewidth=5)
+	ablines!(α, β, color=colors[[1, 2]], linewidth=2, label=["Z = 0", "Z = 1"])
+
+	# Regression lines for unadjusted model
+	ablines!(α_u, β_u, color=:white, linewidth=5)
+	ablines!(α_u, β_u, color=:black, linewidth=2, label="Z ignored")
+
+	# Legend
+	legend_colors = [:black, colors[[1, 2]]...]
+	labels = ["Z ignored", "Z = 0", "Z = 1"]
+	elements = [LineElement(color=c) for c in legend_colors]
+	Legend(fig[1, 2], elements, labels, "Predicted Y")
+	
+	return fig
+end
+
+# ╔═╡ 178a1558-8558-4c0a-87ec-873d91a5edb1
+function forestplot(chn)
+	df = DataFrame(describe(chn)[2])
+	pars = reverse(df.parameters)
+	q025 = reverse(df[:, "2.5%"])
+	q50 = reverse(df[:, "50.0%"])
+	q975 = reverse(df[:, "97.5%"])
+	
+	fig = Figure()
+	ax = Axis(fig[1, 1], yticks=(eachindex(pars), string.(pars)), xlabel="Median, 2.5% and 97.5% quantiles")
+	rangebars!(eachindex(q50), q025, q975, direction=:x, linewidth=2)
+	scatter!(ax, q50, eachindex(q50), strokewidth=2, color=:white, strokecolor=colors[1])
+
+	return fig
+end
+
+# ╔═╡ d287874b-7162-4c9a-8685-19a74e1cec0e
+let
+	fig = forestplot(chn_marriage)
+	vlines!([0], color=:black, linestyle=:dash)
+	fig
+end
+
+# ╔═╡ 12c6554d-ee6e-435e-97ed-df37b4b6765d
+let
+	fig = forestplot(chn_fungus)
+	vlines!([0], color=:black, linestyle=:dash)
+	fig
+end
+
+# ╔═╡ a30c8dc5-83b1-44a8-a433-d0c681dd71ea
+let
+	fig = forestplot(chn_fungus_broke)
+	vlines!([0], color=:black, linestyle=:dash)
+	fig
+end
+
+# ╔═╡ 5065bbdd-d58b-488a-8b01-571245d9a237
+boxstyle = "width:33%;padding:1rem;background-color:#f0f0f0;color:#222;border-radius:5px;border:solid #d1d1d1 2px;"
+
+# ╔═╡ ee82ad34-7cc3-4353-b444-1a5870093529
+TableOfContents(depth=2)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+FreqTables = "da1fdf0e-e0ff-5433-a45f-9bb5ff651cb1"
+HypertextLiteral = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
+CSV = "~0.10.15"
 CairoMakie = "~0.12.18"
+Chain = "~0.6.0"
 DataFrames = "~1.7.0"
+DataStructures = "~0.18.20"
+FreqTables = "~0.4.6"
+HypertextLiteral = "~0.9.5"
+LogExpFunctions = "~0.3.29"
+PlutoUI = "~0.7.60"
 Statistics = "~1.11.1"
 Turing = "~0.35.5"
 """
@@ -132,9 +1029,9 @@ Turing = "~0.35.5"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.2"
+julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "fb5ca36f825573814c2ed10c3b7390dcae308b1c"
+project_hash = "f63d1e910e55f160d2f15f62e1ecf24a348b0e7c"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "72af59f5b8f09faee36b4ec48e014a79210f2f4f"
@@ -173,6 +1070,12 @@ deps = ["AbstractMCMC", "Accessors", "DensityInterface", "JSON", "Random"]
 git-tree-sha1 = "bdb19638644450ee1b0fd63740381835069d34b9"
 uuid = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
 version = "0.9.0"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
@@ -444,6 +1347,12 @@ git-tree-sha1 = "e329286945d0cfc04456972ea732551869af1cfc"
 uuid = "4e9b3aee-d8a1-5a3d-ad8b-7d824db253f0"
 version = "1.0.1+0"
 
+[[deps.CSV]]
+deps = ["CodecZlib", "Dates", "FilePathsBase", "InlineStrings", "Mmap", "Parsers", "PooledArrays", "PrecompileTools", "SentinelArrays", "Tables", "Unicode", "WeakRefStrings", "WorkerUtilities"]
+git-tree-sha1 = "deddd8725e5e1cc49ee205a1964256043720a6c3"
+uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+version = "0.10.15"
+
 [[deps.Cairo]]
 deps = ["Cairo_jll", "Colors", "Glib_jll", "Graphics", "Libdl", "Pango_jll"]
 git-tree-sha1 = "71aa551c5c33f1a4415867fe06b7844faadb0ae9"
@@ -461,6 +1370,29 @@ deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jl
 git-tree-sha1 = "009060c9a6168704143100f36ab08f06c2af4642"
 uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
 version = "1.18.2+1"
+
+[[deps.CategoricalArrays]]
+deps = ["DataAPI", "Future", "Missings", "Printf", "Requires", "Statistics", "Unicode"]
+git-tree-sha1 = "1568b28f91293458345dabba6a5ea3f183250a61"
+uuid = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+version = "0.10.8"
+
+    [deps.CategoricalArrays.extensions]
+    CategoricalArraysJSONExt = "JSON"
+    CategoricalArraysRecipesBaseExt = "RecipesBase"
+    CategoricalArraysSentinelArraysExt = "SentinelArrays"
+    CategoricalArraysStructTypesExt = "StructTypes"
+
+    [deps.CategoricalArrays.weakdeps]
+    JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+    RecipesBase = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
+    SentinelArrays = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
+    StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+
+[[deps.Chain]]
+git-tree-sha1 = "9ae9be75ad8ad9d26395bf625dea9beac6d519f1"
+uuid = "8be319e6-bccf-4806-a6f7-6fae938471bc"
+version = "0.6.0"
 
 [[deps.ChainRules]]
 deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "SparseInverseSubset", "Statistics", "StructArrays", "SuiteSparse"]
@@ -489,17 +1421,23 @@ weakdeps = ["InverseFunctions", "Test"]
     ChangesOfVariablesInverseFunctionsExt = "InverseFunctions"
     ChangesOfVariablesTestExt = "Test"
 
+[[deps.CodecZlib]]
+deps = ["TranscodingStreams", "Zlib_jll"]
+git-tree-sha1 = "bce6804e5e6044c6daab27bb533d1295e4a2e759"
+uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
+version = "0.7.6"
+
 [[deps.ColorBrewer]]
-deps = ["Colors", "JSON", "Test"]
-git-tree-sha1 = "61c5334f33d91e570e1d0c3eb5465835242582c4"
+deps = ["Colors", "JSON"]
+git-tree-sha1 = "e771a63cc8b539eca78c85b0cabd9233d6c8f06f"
 uuid = "a2cac450-b92f-5266-8821-25eda20663c8"
-version = "0.4.0"
+version = "0.4.1"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
-git-tree-sha1 = "c785dfb1b3bfddd1da557e861b919819b82bbe5b"
+git-tree-sha1 = "26ec26c98ae1453c692efded2b17e15125a5bea1"
 uuid = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
-version = "3.27.1"
+version = "3.28.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
@@ -519,9 +1457,9 @@ weakdeps = ["SpecialFunctions"]
 
 [[deps.Colors]]
 deps = ["ColorTypes", "FixedPointNumbers", "Reexport"]
-git-tree-sha1 = "362a287c3aa50601b0bc359053d5c2468f0e7ce0"
+git-tree-sha1 = "64e15186f0aa277e174aa81798f7eb8598e0157e"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
-version = "0.12.11"
+version = "0.13.0"
 
 [[deps.Combinatorics]]
 git-tree-sha1 = "08c8b6831dc00bfea825826be0bc8336fc369860"
@@ -624,9 +1562,9 @@ version = "0.1.2"
 
 [[deps.DelaunayTriangulation]]
 deps = ["AdaptivePredicates", "EnumX", "ExactPredicates", "Random"]
-git-tree-sha1 = "e1371a23fd9816080c828d0ce04373857fe73d33"
+git-tree-sha1 = "5620ff4ee0084a6ab7097a27ba0c19290200b037"
 uuid = "927a84f5-c5f4-47a5-9785-b46e178433df"
-version = "1.6.3"
+version = "1.6.4"
 
 [[deps.DelimitedFiles]]
 deps = ["Mmap"]
@@ -807,9 +1745,9 @@ uuid = "6b7a57c9-7cc1-4fdf-b7f5-e857abae3636"
 version = "0.8.5"
 
 [[deps.Extents]]
-git-tree-sha1 = "81023caa0021a41712685887db1fc03db26f41f5"
+git-tree-sha1 = "063512a13dbe9c40d999c439268539aa552d1ae6"
 uuid = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
-version = "0.1.4"
+version = "0.1.5"
 
 [[deps.FFMPEG_jll]]
 deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "JLLWrappers", "LAME_jll", "Libdl", "Ogg_jll", "OpenSSL_jll", "Opus_jll", "PCRE2_jll", "Zlib_jll", "libaom_jll", "libass_jll", "libfdk_aac_jll", "libvorbis_jll", "x264_jll", "x265_jll"]
@@ -942,6 +1880,12 @@ git-tree-sha1 = "d52e255138ac21be31fa633200b65e4e71d26802"
 uuid = "663a7486-cb36-511b-a19d-713bb74d65c9"
 version = "0.10.6"
 
+[[deps.FreqTables]]
+deps = ["CategoricalArrays", "Missings", "NamedArrays", "Tables"]
+git-tree-sha1 = "4693424929b4ec7ad703d68912a6ad6eff103cfe"
+uuid = "da1fdf0e-e0ff-5433-a45f-9bb5ff651cb1"
+version = "0.4.6"
+
 [[deps.FriBidi_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "846f7026a9decf3679419122b49f8a1fdb48d2d5"
@@ -977,15 +1921,15 @@ uuid = "46192b85-c4d5-4398-a991-12ede77f4527"
 version = "0.2.0"
 
 [[deps.GeoFormatTypes]]
-git-tree-sha1 = "59107c179a586f0fe667024c5eb7033e81333271"
+git-tree-sha1 = "8e233d5167e63d708d41f87597433f59a0f213fe"
 uuid = "68eda718-8dee-11e9-39e7-89f7f65f511f"
-version = "0.4.2"
+version = "0.4.4"
 
 [[deps.GeoInterface]]
 deps = ["DataAPI", "Extents", "GeoFormatTypes"]
-git-tree-sha1 = "f4ee66b6b1872a4ca53303fbb51d158af1bf88d4"
+git-tree-sha1 = "294e99f19869d0b0cb71aef92f19d03649d028d5"
 uuid = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
-version = "1.4.0"
+version = "1.4.1"
 
 [[deps.GeometryBasics]]
 deps = ["EarCut_jll", "Extents", "GeoInterface", "IterTools", "LinearAlgebra", "StaticArrays", "StructArrays", "Tables"]
@@ -1001,9 +1945,9 @@ version = "0.21.0+0"
 
 [[deps.Giflib_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "0224cce99284d997f6880a42ef715a37c99338d1"
+git-tree-sha1 = "6570366d757b50fabae9f4315ad74d2e40c0560a"
 uuid = "59f7168a-df46-5410-90c8-f2779963d0ec"
-version = "5.2.2+2"
+version = "5.2.3+0"
 
 [[deps.Glib_jll]]
 deps = ["Artifacts", "Gettext_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Libiconv_jll", "Libmount_jll", "PCRE2_jll", "Zlib_jll"]
@@ -1045,6 +1989,24 @@ deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
 git-tree-sha1 = "b1c2585431c382e3fe5805874bda6aea90a95de9"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.25"
+
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.5"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
 
 [[deps.ImageAxes]]
 deps = ["AxisArrays", "ImageBase", "ImageCore", "Reexport", "SimpleTraits"]
@@ -1139,9 +2101,9 @@ weakdeps = ["Unitful"]
 
 [[deps.IntervalArithmetic]]
 deps = ["CRlibm_jll", "LinearAlgebra", "MacroTools", "RoundingEmulator"]
-git-tree-sha1 = "ffb76d09ab0dc9f5a27edac2acec13c74a876cc6"
+git-tree-sha1 = "eb6ca9aef11db0c08b7ac0a5952c6c6ba6fbebf0"
 uuid = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-version = "0.22.21"
+version = "0.22.22"
 weakdeps = ["DiffRules", "ForwardDiff", "IntervalSets", "RecipesBase"]
 
     [deps.IntervalArithmetic.extensions]
@@ -1217,9 +2179,9 @@ version = "0.1.5"
 
 [[deps.JpegTurbo_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "ef10afc9f4b942bcd75f4c3bc9d9e8d802944c23"
+git-tree-sha1 = "eac1206917768cb54957c65a615460d87b455fc1"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
-version = "3.1.0+2"
+version = "3.1.1+0"
 
 [[deps.KernelAbstractions]]
 deps = ["Adapt", "Atomix", "InteractiveUtils", "MacroTools", "PrecompileTools", "Requires", "StaticArrays", "UUIDs"]
@@ -1257,9 +2219,9 @@ version = "0.4.1"
 
 [[deps.LERC_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "4ec1e8fac04150b570e315baaa68950e368a803d"
+git-tree-sha1 = "aaafe88dccbd957a8d82f7d05be9b69172e0cee3"
 uuid = "88015f11-f218-50d7-93a8-a6af411a945d"
-version = "4.0.0+3"
+version = "4.0.1+0"
 
 [[deps.LLVMOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1278,9 +2240,9 @@ weakdeps = ["Serialization"]
 
 [[deps.LZO_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "854a9c268c43b77b0a27f22d7fab8d33cdb3a731"
+git-tree-sha1 = "1c602b1127f4751facb671441ca72715cc95938a"
 uuid = "dd4b983a-f0e5-5f8d-a1b7-129d4a5fb1ac"
-version = "2.10.2+3"
+version = "2.10.3+0"
 
 [[deps.L_BFGS_B_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Pkg"]
@@ -1358,21 +2320,21 @@ version = "1.7.0+0"
 
 [[deps.Libgpg_error_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "a7f43994b47130e4f491c3b2dbe78fe9e2aed2b3"
+git-tree-sha1 = "df37206100d39f79b3376afb6b9cee4970041c61"
 uuid = "7add5ba3-2f88-524e-9cd5-f83b8a55f7b8"
-version = "1.51.0+2"
+version = "1.51.1+0"
 
 [[deps.Libiconv_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "61dfdba58e585066d8bce214c5a51eaa0539f269"
+git-tree-sha1 = "be484f5c92fad0bd8acfef35fe017900b0b73809"
 uuid = "94ce4f54-9a6c-5748-9c1c-f9c7231a4531"
-version = "1.17.0+1"
+version = "1.18.0+0"
 
 [[deps.Libmount_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "84eef7acd508ee5b3e956a2ae51b05024181dee0"
+git-tree-sha1 = "89211ea35d9df5831fca5d33552c02bd33878419"
 uuid = "4b2f31a3-9ecc-558c-b454-b3730dcb73e9"
-version = "2.40.2+2"
+version = "2.40.3+0"
 
 [[deps.Libtask]]
 deps = ["FunctionWrappers", "LRUCache", "LinearAlgebra", "Statistics"]
@@ -1382,15 +2344,15 @@ version = "0.8.8"
 
 [[deps.Libtiff_jll]]
 deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "XZ_jll", "Zlib_jll", "Zstd_jll"]
-git-tree-sha1 = "b404131d06f7886402758c9ce2214b636eb4d54a"
+git-tree-sha1 = "4ab7581296671007fc33f07a721631b8855f4b1d"
 uuid = "89763e89-9b03-5906-acba-b20f662cd828"
-version = "4.7.0+0"
+version = "4.7.1+0"
 
 [[deps.Libuuid_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "edbf5309f9ddf1cab25afc344b1e8150b7c832f9"
+git-tree-sha1 = "e888ad02ce716b319e6bdb985d2ef300e7089889"
 uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
-version = "2.40.2+2"
+version = "2.40.3+0"
 
 [[deps.LineSearches]]
 deps = ["LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "Printf"]
@@ -1470,6 +2432,11 @@ deps = ["AbstractFFTs", "DataAPI", "DataStructures", "Distributions", "LinearAlg
 git-tree-sha1 = "770527473d1b929bc4a812831f34970f9c6a6ff6"
 uuid = "be115224-59cd-429b-ad48-344e309966f0"
 version = "0.3.13"
+
+[[deps.MIMEs]]
+git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "0.1.4"
 
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "oneTBB_jll"]
@@ -1813,6 +2780,12 @@ git-tree-sha1 = "3ca9a356cd2e113c420f2c13bea19f8d3fb1cb18"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.3"
 
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "eba4810d5e6a01f612b948c9fa94f905b49087b0"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.60"
+
 [[deps.PolygonOps]]
 git-tree-sha1 = "77b3d3605fc1cd0b42d95eba87dfcd2bf67d5ff6"
 uuid = "647866c9-e3ac-4575-94e7-e3d426903924"
@@ -2031,9 +3004,9 @@ version = "0.7.0"
 
 [[deps.SIMD]]
 deps = ["PrecompileTools"]
-git-tree-sha1 = "52af86e35dd1b177d051b12681e1c581f53c281b"
+git-tree-sha1 = "fea870727142270bdf7624ad675901a1ee3b4c87"
 uuid = "fdea26ae-647d-5447-a871-4b548cad5224"
-version = "3.7.0"
+version = "3.7.1"
 
 [[deps.SSMProblems]]
 deps = ["AbstractMCMC"]
@@ -2364,9 +3337,9 @@ version = "1.11.0"
 
 [[deps.TiffImages]]
 deps = ["ColorTypes", "DataStructures", "DocStringExtensions", "FileIO", "FixedPointNumbers", "IndirectArrays", "Inflate", "Mmap", "OffsetArrays", "PkgVersion", "ProgressMeter", "SIMD", "UUIDs"]
-git-tree-sha1 = "3c0faa42f2bd3c6d994b06286bba2328eae34027"
+git-tree-sha1 = "f21231b166166bebc73b99cea236071eb047525b"
 uuid = "731e570b-9d59-4bfa-96dc-6df516fadf69"
-version = "0.11.2"
+version = "0.11.3"
 
 [[deps.Tracker]]
 deps = ["Adapt", "ChainRulesCore", "DiffRules", "ForwardDiff", "Functors", "LinearAlgebra", "LogExpFunctions", "MacroTools", "NNlib", "NaNMath", "Optimisers", "Printf", "Random", "Requires", "SpecialFunctions", "Statistics"]
@@ -2405,6 +3378,11 @@ version = "0.4.84"
     OnlineStatsBase = "925886fa-5bf2-5e8e-b522-a9147a512338"
     Referenceables = "42d2dcc6-99eb-4e98-b66c-637b7d73030e"
 
+[[deps.Tricks]]
+git-tree-sha1 = "7822b97e99a1672bfb1b49b668a6d46d58d8cbcb"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.9"
+
 [[deps.TriplotBase]]
 git-tree-sha1 = "4d4ed7f294cda19382ff7de4c137d24d16adc89b"
 uuid = "981d1d27-644d-49a2-9326-4793e63143c3"
@@ -2423,6 +3401,11 @@ version = "0.35.5"
     [deps.Turing.weakdeps]
     DynamicHMC = "bbc10e6e-7c05-544b-b16e-64fede858acb"
     Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+
+[[deps.URIs]]
+git-tree-sha1 = "67db6cc7b3821e19ebe75791a9dd19c9b1188f2b"
+uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
+version = "1.5.1"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
@@ -2446,9 +3429,9 @@ version = "0.4.1"
 
 [[deps.Unitful]]
 deps = ["Dates", "LinearAlgebra", "Random"]
-git-tree-sha1 = "01915bfcd62be15329c9a07235447a89d588327c"
+git-tree-sha1 = "c0667a8e676c53d390a09dc6870b3d8d6650e2bf"
 uuid = "1986cc42-f94f-5a68-af5c-568840ba703d"
-version = "1.21.1"
+version = "1.22.0"
 weakdeps = ["ConstructionBase", "InverseFunctions"]
 
     [deps.Unitful.extensions]
@@ -2466,6 +3449,12 @@ version = "0.3.0"
     [deps.UnsafeAtomics.weakdeps]
     LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
 
+[[deps.WeakRefStrings]]
+deps = ["DataAPI", "InlineStrings", "Parsers"]
+git-tree-sha1 = "b1be2855ed9ed8eac54e5caff2afcdb442d52c23"
+uuid = "ea10d353-3f73-51f8-a26c-33c1cb351aa5"
+version = "1.4.2"
+
 [[deps.WebP]]
 deps = ["CEnum", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "libwebp_jll"]
 git-tree-sha1 = "aa1ca3c47f119fbdae8770c29820e5e6119b83f2"
@@ -2477,6 +3466,11 @@ deps = ["LinearAlgebra", "SparseArrays"]
 git-tree-sha1 = "c1a7aa6219628fcd757dede0ca95e245c5cd9511"
 uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
 version = "1.0.0"
+
+[[deps.WorkerUtilities]]
+git-tree-sha1 = "cd1659ba0d57b71a464a29e64dbc67cfe83d54e7"
+uuid = "76eceee3-57b5-4d4a-8e66-0e911cebbf60"
+version = "1.6.1"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
@@ -2492,9 +3486,9 @@ version = "1.1.42+0"
 
 [[deps.XZ_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "15e637a697345f6743674f1322beefbc5dcd5cfc"
+git-tree-sha1 = "56c6604ec8b2d82cc4cfe01aa03b00426aac7e1f"
 uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
-version = "5.6.3+2"
+version = "5.6.4+1"
 
 [[deps.Xorg_libX11_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxcb_jll", "Xorg_xtrans_jll"]
@@ -2504,15 +3498,15 @@ version = "1.8.6+3"
 
 [[deps.Xorg_libXau_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "2b0e27d52ec9d8d483e2ca0b72b3cb1a8df5c27a"
+git-tree-sha1 = "e9216fdcd8514b7072b43653874fd688e4c6c003"
 uuid = "0c0b7dd1-d40b-584c-a123-a41640f87eec"
-version = "1.0.11+3"
+version = "1.0.12+0"
 
 [[deps.Xorg_libXdmcp_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "02054ee01980c90297412e4c809c8694d7323af3"
+git-tree-sha1 = "89799ae67c17caa5b3b5a19b8469eeee474377db"
 uuid = "a3789734-cfe1-5b06-b2d0-1dd0d9d62d05"
-version = "1.1.4+3"
+version = "1.1.5+0"
 
 [[deps.Xorg_libXext_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libX11_jll"]
@@ -2528,9 +3522,9 @@ version = "0.9.11+1"
 
 [[deps.Xorg_libpthread_stubs_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "fee57a273563e273f0f53275101cd41a8153517a"
+git-tree-sha1 = "c57201109a9e4c0585b208bb408bc41d205ac4e9"
 uuid = "14d82f49-176c-5ed1-bb49-ad3f5cbd8c74"
-version = "0.1.1+3"
+version = "0.1.2+0"
 
 [[deps.Xorg_libxcb_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "XSLT_jll", "Xorg_libXau_jll", "Xorg_libXdmcp_jll", "Xorg_libpthread_stubs_jll"]
@@ -2540,9 +3534,9 @@ version = "1.17.0+3"
 
 [[deps.Xorg_xtrans_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "b9ead2d2bdb27330545eb14234a2e300da61232e"
+git-tree-sha1 = "6dba04dbfb72ae3ebe5418ba33d087ba8aa8cb00"
 uuid = "c5fb5394-a638-5e4d-96e5-b29de1b5cf10"
-version = "1.5.0+3"
+version = "1.5.1+0"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
@@ -2551,9 +3545,9 @@ version = "1.2.13+1"
 
 [[deps.Zstd_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "555d1076590a6cc2fdee2ef1469451f872d8b41b"
+git-tree-sha1 = "622cf78670d067c738667aaa96c553430b65e269"
 uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
-version = "1.5.6+3"
+version = "1.5.7+0"
 
 [[deps.ZygoteRules]]
 deps = ["ChainRulesCore", "MacroTools"]
@@ -2569,9 +3563,9 @@ version = "0.2.3+0"
 
 [[deps.libaom_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "1827acba325fdcdf1d2647fc8d5301dd9ba43a9d"
+git-tree-sha1 = "522c1df09d05a71785765d19c9524661234738e9"
 uuid = "a4ae2306-e953-59d6-aa16-d00cac43593b"
-version = "3.9.0+0"
+version = "3.11.0+0"
 
 [[deps.libass_jll]]
 deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl", "Zlib_jll"]
@@ -2592,15 +3586,15 @@ version = "2.0.3+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
-git-tree-sha1 = "b70c870239dc3d7bc094eb2d6be9b73d27bef280"
+git-tree-sha1 = "d7b5bbf1efbafb5eca466700949625e07533aff2"
 uuid = "b53b4c65-9356-5827-b1ea-8c7a1a84506f"
-version = "1.6.44+2"
+version = "1.6.45+1"
 
 [[deps.libsixel_jll]]
-deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Pkg", "libpng_jll"]
-git-tree-sha1 = "7dfa0fd9c783d3d0cc43ea1af53d69ba45c447df"
+deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "Libdl", "libpng_jll"]
+git-tree-sha1 = "c1733e347283df07689d71d61e14be986e49e47a"
 uuid = "075b6546-f08a-558a-be8f-8157d0f608a5"
-version = "1.10.3+3"
+version = "1.10.5+0"
 
 [[deps.libvorbis_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Ogg_jll", "Pkg"]
@@ -2610,9 +3604,9 @@ version = "1.3.7+2"
 
 [[deps.libwebp_jll]]
 deps = ["Artifacts", "Giflib_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libglvnd_jll", "Libtiff_jll", "libpng_jll"]
-git-tree-sha1 = "ccbb625a89ec6195856a50aa2b668a5c08712c94"
+git-tree-sha1 = "d2408cac540942921e7bd77272c32e58c33d8a77"
 uuid = "c5f90fcd-3b7e-5836-afba-fc50a0988cb2"
-version = "1.4.0+0"
+version = "1.5.0+0"
 
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -2632,9 +3626,9 @@ version = "17.4.0+2"
 
 [[deps.x264_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "35976a1216d6c066ea32cba2150c4fa682b276fc"
+git-tree-sha1 = "14cc7083fc6dff3cc44f2bc435ee96d06ed79aa7"
 uuid = "1270edf5-f2f9-52d2-97e9-ab00b5d0237a"
-version = "10164.0.0+0"
+version = "10164.0.1+0"
 
 [[deps.x265_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -2649,28 +3643,180 @@ version = "3.6.0+0"
 # ╠═0801c86f-988c-4376-9935-fff9f7c55f45
 # ╠═ec8e3659-eb0a-4ceb-9be9-514152eed3a5
 # ╠═9bacd470-ea83-4733-99fd-855c20422b6e
+# ╠═6faaffc8-1003-456a-bc8a-224336e0430b
+# ╠═0873970d-1a4d-490e-92e7-9b32123f7080
+# ╠═216847ca-8a5b-417b-b2be-cf5b578621e4
+# ╠═b633a029-192b-4dbd-abc8-1a2e511e5745
+# ╠═fde393be-51be-49f7-ba0d-72c754efcc52
+# ╠═a4a62e73-6e98-4bc1-bfd0-a1cca3b3b554
 # ╠═624b9016-adb5-4941-ac84-05cb38427d00
+# ╟─a1f70b28-526a-4ff8-a7cc-7d79c7028340
 # ╟─d4d2e54c-5a4d-406d-967d-5e5ccb0d3a56
+# ╟─b2afa686-f34f-4c0d-88bd-090ff65b490c
 # ╠═3f7a37d7-8242-4dd7-8c70-5bd913cc824d
+# ╟─626f0c72-0c65-4c56-a394-daee685b7e60
 # ╠═596c67a9-1718-4ecf-9a81-fae75eb2fcbd
-# ╠═58fdf109-099f-4d1d-a71c-556c1bcd9c1a
+# ╟─f759e6c3-e135-4dda-a3e6-e3d43b53f9bd
+# ╠═db66598a-73ce-4949-a1c7-f1d90f1e3e66
 # ╠═de67f719-ab41-4b77-9897-b5a811dc892f
 # ╠═526cbf77-6807-4079-869c-2dd80adb2d76
+# ╠═c14bee9b-6993-4af0-8f8b-59672a88e9e2
 # ╟─c7c7af69-f54e-4240-89b3-52328cb0e48c
 # ╠═652dc176-0c84-478e-8aaf-88488b2ea5b4
 # ╟─939aa61b-f306-4b95-9964-0eee2f5801f7
 # ╠═989985ef-f385-423c-9cc7-61436423e8e9
-# ╠═5b870b67-3808-4243-8c15-ef494215fdfb
-# ╠═35b585da-c4b7-4e67-a7a9-b954622cb09c
+# ╟─35b585da-c4b7-4e67-a7a9-b954622cb09c
 # ╠═e98e422e-7ea7-46ff-bc27-5e1c59450abd
 # ╠═8e210d26-bb82-4c3c-ae56-96fdbff10d55
 # ╠═c109db4f-6801-41a5-b73d-e204f12ea42f
 # ╠═135c0784-eb69-4594-a1ee-237e8beda68d
+# ╟─58e24984-cf7b-4833-b99f-949abd966e68
 # ╠═e3494929-a149-4bb5-a426-201e18cc3294
+# ╠═e213de8b-e0d5-4564-a95c-dccc1ec2e519
 # ╠═4b853b1e-4470-4e09-8ae1-27dcd06191cd
 # ╠═2bc48db1-d02c-495a-9e30-c46daa97ed4f
-# ╠═fc60e8b4-978b-4b07-9926-85a3d9cb72b8
+# ╠═75898116-51b1-4d2f-b184-606cc8ec34d9
+# ╠═cafb1472-93bd-4a4f-977a-4fdda501bf0e
+# ╟─a7405c21-5b4d-46eb-a584-9905dbde1ada
 # ╠═295bef51-9a13-4fb6-9ea4-04798cb5c8ea
+# ╠═0b7dabf2-eeaf-4db0-9c39-bceeb6f6c1db
+# ╟─2bd27535-c2b0-4aa4-9f43-4eaa8856b183
+# ╠═0191d5d9-a978-4ad8-b930-fbb96b32d6c4
+# ╠═830c269a-b63a-4984-a472-f3a15c406caf
+# ╟─a3688857-4b88-46ee-8d35-9b10901a9299
+# ╠═97641ab4-2d70-4cdf-aaa3-bdd210cac62e
+# ╟─addf5fad-32c9-42e3-822b-4c4d692e27d5
+# ╠═d2011edf-9d47-41d7-a203-1553392aee3a
+# ╟─543683e7-7de4-475c-bb0e-68694d9ff055
+# ╠═1264579c-8d55-4fab-98b9-ec9deef04cab
+# ╠═ad09f5ee-9c8f-49d0-bace-e7f43ac8dc3a
+# ╠═8be14eb2-1032-43e5-9cf6-d29cefc4686d
+# ╟─7f930e23-32b0-4f13-a6c4-222da423e827
+# ╠═1c3d5836-3204-4806-9ab5-dc5c69c73a27
+# ╟─ba3a3f91-48f0-47b1-925a-6355c81cb477
+# ╠═86a46e39-d802-4ea0-aa97-2fac5b3ec760
+# ╠═8c8cca7c-141d-4f47-b122-c8edd810eeba
+# ╠═49ddb356-2c81-4b5f-8a45-ab9d91d8db99
+# ╠═d287874b-7162-4c9a-8685-19a74e1cec0e
+# ╟─566a9779-f946-489f-a8be-872172ddfde5
+# ╟─23b6c201-fa64-4bf7-bd65-f770efee803a
+# ╠═e8dd0795-c36b-4131-82a3-e03af92c23be
+# ╠═f069370b-bb7e-4178-a730-7a5c3d963864
+# ╠═37ee972e-665d-4544-a917-7a8a214c1cd8
+# ╠═d09d721d-676e-4b30-aa32-449a37772f15
+# ╟─5121d828-545a-48e8-9e2d-331f81ad923e
+# ╠═7ea81597-c96c-43a2-827c-f660fe424558
+# ╠═2afae9d7-ee86-4177-8496-0cdd83c12edf
+# ╠═3cd9e2cd-1ad3-4622-9ea3-d82a3051acf8
+# ╠═c602d08f-3298-4854-9602-c59d990f8bba
+# ╠═cdc02a0f-eaa5-4928-bec5-1092a1942631
+# ╠═828b10fb-2573-4852-aa80-5b6f8f2cdedc
+# ╠═d6b7246a-57b3-4fe7-9427-41003b7cfa72
+# ╠═bf76c6cb-6601-49d7-a9e1-8e2b72d59666
+# ╠═27646085-2898-46bd-bb25-20927e42a22d
+# ╠═996c31d5-e4aa-46c4-8f3b-51932ac80109
+# ╠═649972b7-9feb-4b20-99e6-e6822c798b55
+# ╠═c8eb37f8-0741-45dd-96d8-91622760b47c
+# ╠═f6bc4050-7e3d-4066-8c07-1ccab8f2c912
+# ╠═ac7715d0-3f49-46b6-a693-205972f29639
+# ╠═460c1bfe-15f9-4f3d-a9af-8f264217d6a0
+# ╟─259b2b46-73be-49cb-91b1-8e03045455d9
+# ╠═3c446ae3-4662-4bb2-8b27-f2330033125e
+# ╟─978fa4aa-e220-4c98-938e-65d0eb322b37
+# ╠═4e55395a-fe7c-4164-8f9f-4946ff7107bd
+# ╠═e0c6272f-149f-4b97-9007-a9d3ef790630
+# ╠═6a281052-745e-4338-b8d3-34d6ba51f68f
+# ╠═428a8063-7b8f-498e-bbcc-6eed8cd4ddbe
+# ╠═0cc9f4e6-9b25-4177-a1a8-5eafea6f75d4
+# ╠═3e858766-c3e8-4283-a775-58bdea6d56be
+# ╟─44dcd91d-1113-4e86-9a9f-c8e6bb150c99
+# ╠═65bc9834-6ee6-433a-aa65-09563bc6d74a
+# ╠═ad0a3d2d-16e5-4253-bc18-3144fa2810fe
+# ╠═493afc69-30b7-4d08-9ee5-11e8c3e7d284
+# ╠═27f4b2fe-e2db-4730-be2f-a26122a47975
+# ╠═a2c6cda2-2f9f-4750-9ee3-ebdde7cc3fbf
+# ╟─3ff6eb12-962b-4d3c-ac14-1d8cfa1e0c4c
+# ╠═12c6554d-ee6e-435e-97ed-df37b4b6765d
+# ╟─8962e445-6f21-42ea-bdd8-bf8568defe8a
+# ╠═293a64d3-de54-400d-a045-4445080013b5
+# ╠═4fd23cb3-ef41-44f8-a505-8c3d9a73b934
+# ╠═8f8472a6-c1db-4a25-85ef-b0816a0fc782
+# ╠═1f8a54a5-8271-4b4e-93fb-10464313f48c
+# ╟─a4b7f04a-531a-4f12-b82c-01353ea65741
+# ╠═a30c8dc5-83b1-44a8-a433-d0c681dd71ea
+# ╠═5e262894-c0fd-410b-b10a-8d56fdf2f9c5
+# ╟─7cab1241-00b8-49b1-9be9-168ed55678da
+# ╠═9535009c-d310-4609-8fc5-fbc6ca3004eb
+# ╠═81b4feb2-c54a-4280-9abe-9768e76f1b46
+# ╠═263363b9-1189-47af-8c83-174172399202
+# ╠═342ea36f-0b89-4b0e-8e80-cb6179cafc8a
+# ╠═3fa30379-fd05-4a04-a6c3-723bd7dee488
+# ╠═a2e663ac-e8d3-4742-86fb-cc39e87d2d88
+# ╠═dba4286d-67d4-4bdb-a748-d455ac3a1799
+# ╠═39ab8ea0-fb10-4d13-9e8c-fd36212a43c5
+# ╠═4722487e-fbab-45a3-849f-ad050b42c7c9
+# ╠═3c8a77f3-a051-4ca2-baf1-aa7b992434a2
+# ╠═0f1e65ce-14bb-40cd-9631-b2a3d17b4bf6
+# ╠═089b39cf-ced1-40e7-b652-f9fe46662e95
+# ╠═dfd96703-9194-46ac-a5c3-3a4498cabb74
+# ╠═f0c682b0-68cd-4e13-8b31-991652ae9a25
+# ╠═d194d01f-5cea-427c-99ed-e92295b602a1
+# ╠═daebc097-c5e2-47e5-98b2-b7dd02f2bec3
+# ╠═6e2875ae-560c-4572-ac86-66bca208a17b
+# ╠═491001ba-76cb-493a-bc8b-3841eecb81c5
+# ╟─ecc7815f-8b37-4016-a8dc-7fe16c3cbdf5
+# ╠═6c57c756-ab15-4062-ac8b-79447e2a8690
+# ╟─4ea646e4-464f-448f-a672-3e659f65e588
+# ╠═079a287c-c629-4d49-83d3-72adb5fe66e8
+# ╠═1b62d04d-7c30-4e53-9918-6798f6ef4b75
+# ╠═58c52cfb-5c34-4962-a007-fec1dd1ff550
+# ╠═225a2559-4b93-4938-97a6-2ceec7315f5f
+# ╠═88c757c3-81fc-4d00-bc03-704d8591b3e1
+# ╟─0394a696-60d0-4965-b389-a1de0641fc89
+# ╠═99abaacc-a4a5-40a7-a09b-4464ac7321e0
+# ╟─9c3a902e-fae5-4398-99e8-a242c5d8192f
+# ╟─1e774bc3-d68e-4cb1-a3f8-b38b2a51ee14
+# ╠═536c5305-9edb-421b-91d2-41e7e61138f9
+# ╠═c38b963c-9fc8-499b-a25f-6052102cec8b
+# ╠═c2af81a9-1fc3-41f9-9305-504b2c67231f
+# ╠═c2b9d1d4-658e-4945-9b8f-16c63187c57f
+# ╠═eb1a531a-9b6a-4850-ad7b-4c20a914007e
+# ╠═06911dff-b5ab-4fae-8390-ebfc3fb5872b
+# ╠═37daaab4-a00e-476f-b7fb-f18b993b7e55
+# ╠═21755048-d36e-477e-8a90-c03a618ca1e5
+# ╠═9473a62e-33a7-4ced-ae95-4216d23b3619
+# ╠═001c8153-085b-4856-9078-948ead1d58ff
+# ╠═c5aede88-1ad8-421c-a436-f7375fb31d62
+# ╠═e9adc2cc-b9da-457e-970b-70efe9c3a891
+# ╠═0735627f-fcc1-4342-9631-16cd72a3d45c
+# ╠═56b558e8-0eb8-4ab4-84be-eca23f8678db
+# ╠═e1fe084f-2831-4caa-bd95-3df9bb574354
+# ╠═2d093b41-8946-47fb-830c-6820af541748
+# ╠═bb2fbf30-c393-4c8d-b746-8e0109c28449
+# ╠═57dfca39-9ceb-4433-91f1-23ad68a2f955
+# ╟─04123c48-1ed6-44e9-870b-772417a4677b
+# ╠═d65b37da-9081-426e-ac20-ad165c37f7a7
+# ╠═06825892-a7e1-45ee-88b2-d8c64f2493b2
+# ╠═10c6bd0c-1be5-45a7-8f12-48d87a7854f2
+# ╠═1593a2b5-c450-44b2-9f4c-fba5ced6a151
+# ╠═d2b7c992-6a5a-45e1-8027-8290121f9061
+# ╠═4e05e8ee-6504-4eea-8c09-7a16988ea47c
+# ╠═da83c9ea-d560-4d3d-93bb-305cb957683e
+# ╠═e1c11dd9-601a-4d13-9d27-1a768569ca17
+# ╠═27ea232a-2f31-4e14-8e39-512face14385
+# ╠═d0bf0439-7a22-46aa-b104-5a5b16faa9a0
+# ╠═d9139bca-073f-4dd1-bae9-3db35b45fa15
+# ╟─88bc24c5-b80a-423b-a529-5bee6500b7ec
+# ╟─d963aedc-a994-4455-b72d-bee52097e640
+# ╠═9396dc5f-d885-4894-a0f7-4d1910d3eb5a
+# ╠═2c4652c3-1080-49e4-bf12-8813d5b3e431
 # ╠═09ee0ca0-d66a-453b-8586-5892dd41a5b9
+# ╠═07e9c04c-d62b-4f4a-abcc-2ded33c61731
+# ╠═a87bac50-8d65-4ba3-99ae-073fe8dd6432
+# ╠═976260ae-03a1-4149-99ea-6cbd5cdba5e6
+# ╠═178a1558-8558-4c0a-87ec-873d91a5edb1
+# ╠═5065bbdd-d58b-488a-8b01-571245d9a237
+# ╠═0e8043fb-57a6-45df-93e9-7344c9b64905
+# ╠═ee82ad34-7cc3-4353-b444-1a5870093529
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

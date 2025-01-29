@@ -344,6 +344,7 @@ let df = howell1
 	scatter!(df.height .- mean(df.height), df.weight, strokecolor=colors[df.male .+ 1], strokewidth=2, color=:transparent)
 	α = [mean(chn3[:, "α[1]", :]), mean(chn3[:, "α[2]", :])]
 	β = [mean(chn3[:, "β[1]", :]), mean(chn3[:, "β[2]", :])]
+	ablines!(α, β, color=:white, linewidth=4)
 	ablines!(α, β, color=colors[[1,2]], linewidth=2)
 	fig
 end
@@ -494,6 +495,30 @@ m_spline_cond = m_spline_prior | (y=Float64.(cherries.doy),);
 # ╔═╡ a9a06c89-1678-4751-b51d-0bb2007714c7
 chn_splines = sample(m_spline_cond, NUTS(), 100);
 
+# ╔═╡ 10f148d2-be50-4403-a0ec-c914fe396295
+pred_blossom = let
+	lims = [0.1, 0.5, 0.9]
+	@chain begin
+		generated_quantities(m_spline_cond, chn_splines)
+		sdim(:μ)(_)
+		reduce(hcat, _)
+		reduce(hcat, [quantile(x, lims) for x in eachrow(_)])
+		transpose(_)
+		DataFrame(_, [:q10, :q50, :q90])
+	end
+end
+
+# ╔═╡ 8d91a44c-1c80-4e55-a10f-4aa81bed5908
+let df = cherries
+	fig = Figure()
+	ax1 = Axis(fig[1, 1], xlabel="Year", ylabel="DOY first blossom")
+	scatter!(df.year, df.doy, strokecolor=colors[1], strokewidth=2, color=:transparent)
+	band!(df.year, pred_blossom.q10, pred_blossom.q90, color=(colors[2], 0.3))
+	lines!(df.year, pred_blossom.q50, color=:white, linewidth=5)
+	lines!(df.year, pred_blossom.q50, color=colors[2], linewidth=2)
+	fig
+end
+
 # ╔═╡ 6f766433-0d2c-4712-bf68-05b3e71061e7
 md"""
 # Other helpers
@@ -556,30 +581,6 @@ let go_poly
 	lines!(-5:0.1:5, sdim(2)(qs), color=colors[2], linewidth=2)
 	scatter!(x, y, color=:transparent, strokewidth=2, strokecolor=colors[1])
 	
-	fig
-end
-
-# ╔═╡ 10f148d2-be50-4403-a0ec-c914fe396295
-pred_blossom = let
-	lims = [0.1, 0.5, 0.9]
-	@chain begin
-		generated_quantities(m_spline_cond, chn_splines)
-		sdim(:μ)(_)
-		reduce(hcat, _)
-		reduce(hcat, [quantile(x, lims) for x in eachrow(_)])
-		transpose(_)
-		DataFrame(_, [:q10, :q50, :q90])
-	end
-end
-
-# ╔═╡ 8d91a44c-1c80-4e55-a10f-4aa81bed5908
-let df = cherries
-	fig = Figure()
-	ax1 = Axis(fig[1, 1], xlabel="Year", ylabel="DOY first blossom")
-	scatter!(df.year, df.doy, strokecolor=colors[1], strokewidth=2, color=:transparent)
-	band!(df.year, pred_blossom.q10, pred_blossom.q90, color=(colors[2], 0.3))
-	lines!(df.year, pred_blossom.q50, color=:white, linewidth=5)
-	lines!(df.year, pred_blossom.q50, color=colors[2], linewidth=2)
 	fig
 end
 
